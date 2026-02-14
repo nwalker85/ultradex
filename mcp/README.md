@@ -1,10 +1,10 @@
-# Hrafngrima MCP Server
+# Ultradex MCP Server
 
-Model Context Protocol (MCP) server that exposes Hrafngrima contact analysis tools to AI agents like Jarvis.
+Model Context Protocol (MCP) server that exposes Ultradex contact analysis tools to AI agents like Jarvis.
 
 ## Overview
 
-The MCP server acts as a bridge between AI agents (e.g., Jarvis voice AI) and the Hrafngrima API. It implements the Model Context Protocol to allow Jarvis to:
+The MCP server acts as a bridge between AI agents (e.g., Jarvis voice AI) and the Ultradex API. It implements the Model Context Protocol to allow Jarvis to:
 
 - Sync contacts from Dex
 - Run AI analysis to identify high-value neglected relationships
@@ -18,11 +18,11 @@ Jarvis (Voice AI)
       │
       ├─ MCP Protocol (stdio/HTTP)
       │
-Hrafngrima MCP Server
+Ultradex MCP Server
       │
       ├─ HTTP Calls
       │
-Hrafngrima FastAPI (Internal)
+Ultradex FastAPI (Internal)
       │
       ├─ Dex API ─────┐
       │               ├─ PostgreSQL
@@ -34,7 +34,7 @@ Hrafngrima FastAPI (Internal)
 ### Requirements
 
 - Python 3.11+
-- Hrafngrima API running (http://localhost:8000 by default)
+- Ultradex API running (http://localhost:8000 by default)
 
 ### Setup
 
@@ -60,15 +60,15 @@ HRAFNGRIMA_API_URL=http://api.example.com:8000 python mcp/run_server.py
 
 ### Jarvis Integration
 
-Configure Jarvis to use the Hrafngrima MCP server by updating its MCP server configuration:
+Configure Jarvis to use the Ultradex MCP server by updating its MCP server configuration:
 
 ```python
 # In Jarvis configuration
 mcp_servers = {
-    "hrafngrima": {
+    "ultradex": {
         "type": "stdio",
         "command": "python",
-        "args": ["/path/to/hrafngrima/mcp/run_server.py"],
+        "args": ["/path/to/ultradex/mcp/run_server.py"],
         "env": {
             "HRAFNGRIMA_API_URL": "http://localhost:8000"
         }
@@ -80,15 +80,15 @@ Or using the mcp.json configuration file:
 
 ```bash
 # Copy mcp.json to Jarvis MCP servers directory
-cp mcp/mcp.json /path/to/jarvis/mcp-servers/hrafngrima.json
+cp mcp/mcp.json /path/to/jarvis/mcp-servers/ultradex.json
 
 # Update path variable
-sed -i 's|${HRAFNGRIMA_ROOT}|/path/to/hrafngrima|g' /path/to/jarvis/mcp-servers/hrafngrima.json
+sed -i 's|${HRAFNGRIMA_ROOT}|/path/to/ultradex|g' /path/to/jarvis/mcp-servers/ultradex.json
 ```
 
 ## Available Tools
 
-### hrafngrima/sync_contacts
+### ultradex/sync_contacts
 
 Sync all contacts from Dex to the local database.
 
@@ -107,7 +107,7 @@ Sync all contacts from Dex to the local database.
 }
 ```
 
-### hrafngrima/analyze_contacts
+### ultradex/analyze_contacts
 
 Run AI analysis on contacts to identify high-value relationships and generate outreach strategies.
 
@@ -128,7 +128,7 @@ Run AI analysis on contacts to identify high-value relationships and generate ou
 }
 ```
 
-### hrafngrima/get_contacts
+### ultradex/get_contacts
 
 Get all cached contacts from the database.
 
@@ -155,7 +155,7 @@ Get all cached contacts from the database.
 }
 ```
 
-### hrafngrima/get_contact
+### ultradex/get_contact
 
 Get detailed information about a specific contact.
 
@@ -184,7 +184,7 @@ Get detailed information about a specific contact.
 }
 ```
 
-### hrafngrima/get_neglected_contacts
+### ultradex/get_neglected_contacts
 
 Get high-value contacts that haven't been contacted recently.
 
@@ -216,7 +216,7 @@ Get high-value contacts that haven't been contacted recently.
 }
 ```
 
-### hrafngrima/write_note
+### ultradex/write_note
 
 Write a note to a contact in Dex (appended to contact's timeline).
 
@@ -237,7 +237,7 @@ Write a note to a contact in Dex (appended to contact's timeline).
 }
 ```
 
-### hrafngrima/get_analysis_stats
+### ultradex/get_analysis_stats
 
 Get aggregate statistics about contact analysis.
 
@@ -258,7 +258,7 @@ Get aggregate statistics about contact analysis.
 }
 ```
 
-### hrafngrima/get_analysis_history
+### ultradex/get_analysis_history
 
 Get recent analysis runs.
 
@@ -300,11 +300,11 @@ Common error scenarios:
 - **400 Bad Request**: Missing required parameters or invalid input
 - **404 Not Found**: Contact or analysis run not found
 - **500 Internal Error**: API error or database issue
-- **Connection Error**: Hrafngrima API not accessible
+- **Connection Error**: Ultradex API not accessible
 
 ## Environment Variables
 
-- `HRAFNGRIMA_API_URL` - Base URL for Hrafngrima API (default: `http://localhost:8000`)
+- `HRAFNGRIMA_API_URL` - Base URL for Ultradex API (default: `http://localhost:8000`)
 - `PYTHONUNBUFFERED` - Set to `1` for unbuffered output (recommended)
 
 ## Debugging
@@ -343,7 +343,7 @@ When Jarvis receives a voice command like:
 It can call:
 ```python
 result = await jarvis_mcp.call_tool(
-    "hrafngrima/get_neglected_contacts",
+    "ultradex/get_neglected_contacts",
     {}
 )
 ```
@@ -354,10 +354,10 @@ Jarvis can periodically check for neglected contacts:
 
 ```python
 # Every day at 9 AM
-schedule.daily(jarvis_mcp.call_tool, "hrafngrima/analyze_contacts", {"limit": 50})
+schedule.daily(jarvis_mcp.call_tool, "ultradex/analyze_contacts", {"limit": 50})
 
 # If neglected contacts found, write note
-result = await jarvis_mcp.call_tool("hrafngrima/get_analysis_stats", {})
+result = await jarvis_mcp.call_tool("ultradex/get_analysis_stats", {})
 if result["stats"]["total_neglected_found"] > 0:
     # Notify user via voice
     jarvis.speak("You have {} neglected contacts to reach out to".format(
@@ -370,8 +370,8 @@ if result["stats"]["total_neglected_found"] > 0:
 ### Test MCP Server Locally
 
 ```bash
-# Start Hrafngrima API
-cd ~/src/products/hrafngrima
+# Start Ultradex API
+cd ~/src/products/ultradex
 docker-compose up
 
 # In another terminal, test MCP server
@@ -392,7 +392,7 @@ async with Client(subprocess.Popen(
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
 )) as client:
-    result = await client.call_tool("hrafngrima/get_contacts", {})
+    result = await client.call_tool("ultradex/get_contacts", {})
     print(result)
 ```
 
@@ -420,7 +420,7 @@ For 200 contacts:
 - Restart Jarvis after configuration changes
 
 ### API calls timing out
-- Check network connectivity to Hrafngrima API
+- Check network connectivity to Ultradex API
 - Increase timeout in `client.py` if needed (default 60s)
 - Check API logs for errors
 

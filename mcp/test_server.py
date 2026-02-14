@@ -1,18 +1,18 @@
 #!/usr/bin/env python
-"""Tests for Hrafngrima MCP server"""
+"""Tests for Ultradex MCP server"""
 
 import asyncio
 import json
 from typing import Any, Dict
 
-from client import HrafngrimaAPIClient
+from client import UltradexAPIClient
 
 
 async def test_api_client():
     """Test the API client methods"""
-    print("Testing Hrafngrima API Client...\n")
+    print("Testing Ultradex API Client...\n")
     
-    async with HrafngrimaAPIClient() as client:
+    async with UltradexAPIClient() as client:
         # Test health check
         print("1. Testing health check...")
         try:
@@ -81,9 +81,9 @@ async def test_mcp_server_init():
     print("Testing MCP Server Initialization...\n")
     
     try:
-        from server import HrafngrimaMCPServer
+        from server import UltradexMCPServer
         
-        server = HrafngrimaMCPServer(api_base_url="http://localhost:8000")
+        server = UltradexMCPServer(api_base_url="http://localhost:8000")
         print(f"  ✓ Server initialized successfully\n")
         
         # Check health
@@ -92,7 +92,7 @@ async def test_mcp_server_init():
             print(f"  ✓ API connectivity confirmed\n")
         except Exception as e:
             print(f"  ⚠ API not accessible: {e}")
-            print(f"    (This is expected if Hrafngrima API isn't running)\n")
+            print(f"    (This is expected if Ultradex API isn't running)\n")
         
         await server.close()
         return True
@@ -104,7 +104,7 @@ async def test_mcp_server_init():
 async def main():
     """Run all tests"""
     print("=" * 60)
-    print("Hrafngrima MCP Server Test Suite")
+    print("Ultradex MCP Server Test Suite")
     print("=" * 60 + "\n")
     
     results = {

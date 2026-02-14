@@ -27,7 +27,7 @@ var configSetCmd = &cobra.Command{
 			return fmt.Errorf("failed to get home directory: %w", err)
 		}
 
-		configDir := filepath.Join(home, ".hrafngrima")
+		configDir := filepath.Join(home, ".ultradex")
 		configFile := filepath.Join(configDir, "config.yaml")
 
 		// Create config directory if it doesn't exist
@@ -70,7 +70,7 @@ var configShowCmd = &cobra.Command{
 	Short: "Show all configuration",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, _ := os.UserHomeDir()
-		configFile := filepath.Join(home, ".hrafngrima", "config.yaml")
+		configFile := filepath.Join(home, ".ultradex", "config.yaml")
 
 		fmt.Printf("=== Configuration ===\n")
 		fmt.Printf("API URL: %s\n", viper.GetString("api"))
@@ -97,7 +97,7 @@ var configResetCmd = &cobra.Command{
 			return fmt.Errorf("failed to get home directory: %w", err)
 		}
 
-		configFile := filepath.Join(home, ".hrafngrima", "config.yaml")
+		configFile := filepath.Join(home, ".ultradex", "config.yaml")
 
 		if err := os.Remove(configFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove config file: %w", err)

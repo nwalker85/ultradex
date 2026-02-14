@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Entrypoint for running the Hrafngrima MCP server"""
+"""Entrypoint for running the Ultradex MCP server"""
 
 import asyncio
 import logging
@@ -10,7 +10,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp.server import HrafngrimaMCPServer
+from mcp.server import UltradexMCPServer
 
 # Configure logging
 logging.basicConfig(
@@ -27,10 +27,10 @@ async def main():
     # Get API base URL from environment or use default
     api_base_url = os.getenv("HRAFNGRIMA_API_URL", "http://localhost:8000")
     
-    logger.info(f"Initializing Hrafngrima MCP server")
+    logger.info(f"Initializing Ultradex MCP server")
     logger.info(f"API URL: {api_base_url}")
     
-    server = HrafngrimaMCPServer(api_base_url=api_base_url)
+    server = UltradexMCPServer(api_base_url=api_base_url)
     
     try:
         await server.start(stdio=True)

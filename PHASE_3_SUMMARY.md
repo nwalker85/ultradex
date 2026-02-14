@@ -2,7 +2,7 @@
 
 ## Overview
 
-Phase 3 implements the MCP (Model Context Protocol) server for Hrafngrima, enabling integration with Jarvis and other AI agents.
+Phase 3 implements the MCP (Model Context Protocol) server for Ultradex, enabling integration with Jarvis and other AI agents.
 
 ## Architecture
 
@@ -13,11 +13,11 @@ AI Agents (Jarvis, Claude, etc.)
     ↓
 MCP Protocol (stdio/HTTP)
     ↓
-Hrafngrima MCP Server
+Ultradex MCP Server
     ↓
 HTTP Calls
     ↓
-Hrafngrima FastAPI (Internal)
+Ultradex FastAPI (Internal)
     ↓
 Dex API + Claude + PostgreSQL
 ```
@@ -36,7 +36,7 @@ Dex API + Claude + PostgreSQL
 - Startup/shutdown lifecycle
 
 **`mcp/client.py`** (100 lines)
-- HTTP client for internal Hrafngrima API
+- HTTP client for internal Ultradex API
 - Async methods for all API endpoints
 - Context manager support
 - Connection pooling via httpx
@@ -88,43 +88,43 @@ Dex API + Claude + PostgreSQL
 
 The MCP server exposes 8 tools to AI agents:
 
-1. **hrafngrima/sync_contacts**
+1. **ultradex/sync_contacts**
    - Sync all contacts from Dex
    - No parameters
    - Returns: sync count, timestamp
 
-2. **hrafngrima/analyze_contacts**
+2. **ultradex/analyze_contacts**
    - Run AI analysis on contacts
    - Optional: `limit` (int)
    - Returns: analyzed count, neglected count, tokens, cost
 
-3. **hrafngrima/get_contacts**
+3. **ultradex/get_contacts**
    - Retrieve all cached contacts
    - No parameters
    - Returns: List of all contacts with AI scores
 
-4. **hrafngrima/get_contact**
+4. **ultradex/get_contact**
    - Get specific contact details
    - Required: `contact_id` (string)
    - Returns: Detailed contact with analysis
 
-5. **hrafngrima/get_neglected_contacts**
+5. **ultradex/get_neglected_contacts**
    - Get high-value neglected contacts
    - No parameters
    - Filters: value ≥60, days ≥30
    - Returns: List of neglected contacts
 
-6. **hrafngrima/write_note**
+6. **ultradex/write_note**
    - Write note to contact in Dex
    - Required: `contact_id`, `note`
    - Returns: Success status, timestamp
 
-7. **hrafngrima/get_analysis_stats**
+7. **ultradex/get_analysis_stats**
    - Get aggregate analysis statistics
    - No parameters
    - Returns: Total runs, analyzed, neglected, cost tracking
 
-8. **hrafngrima/get_analysis_history**
+8. **ultradex/get_analysis_history**
    - Get recent analysis runs
    - Optional: `limit` (int, default=10)
    - Returns: List of analysis runs with metadata
@@ -176,10 +176,10 @@ HRAFNGRIMA_API_URL=http://api.example.com:8000 python mcp/run_server.py
 ```python
 # In Jarvis configuration
 MCP_SERVERS = {
-    "hrafngrima": {
+    "ultradex": {
         "type": "stdio",
         "command": "python",
-        "args": ["/path/to/hrafngrima/mcp/run_server.py"],
+        "args": ["/path/to/ultradex/mcp/run_server.py"],
         "env": {
             "HRAFNGRIMA_API_URL": "http://localhost:8000"
         }
@@ -197,8 +197,8 @@ python mcp/test_server.py
 curl -X POST http://localhost:8000/jarvis/mcp/call \
   -H "Content-Type: application/json" \
   -d '{
-    "server": "hrafngrima",
-    "tool": "hrafngrima/get_contacts",
+    "server": "ultradex",
+    "tool": "ultradex/get_contacts",
     "arguments": {}
   }'
 ```
@@ -237,7 +237,7 @@ Jarvis: "I've added the note to her profile in Dex."
 
 ### Required Environment (at runtime)
 
-The Hrafngrima API must have:
+The Ultradex API must have:
 - `DEX_API_KEY` - Dex API credentials
 - `CLAUDE_API_KEY` - Anthropic API key
 - `DATABASE_URL` - PostgreSQL connection
@@ -261,20 +261,20 @@ The Hrafngrima API must have:
 
 - Create Go module structure
 - Implement commands:
-  - `hrafngrima sync` - Sync contacts
-  - `hrafngrima analyze` - Run analysis
-  - `hrafngrima contacts` - List/filter contacts
-  - `hrafngrima config` - Manage configuration
-  - `hrafngrima health` - Check API health
+  - `ultradex sync` - Sync contacts
+  - `ultradex analyze` - Run analysis
+  - `ultradex contacts` - List/filter contacts
+  - `ultradex config` - Manage configuration
+  - `ultradex health` - Check API health
 - Build binary for deployment
 - Create installation/upgrade scripts
 
 ## Summary
 
-Phase 3 completes the consumer layer for Hrafngrima by implementing a fully-featured MCP server that:
+Phase 3 completes the consumer layer for Ultradex by implementing a fully-featured MCP server that:
 
 1. **Bridges Protocols**: Converts MCP protocol calls to HTTP API calls
-2. **Enables Voice Integration**: Jarvis can now control Hrafngrima via voice
+2. **Enables Voice Integration**: Jarvis can now control Ultradex via voice
 3. **Provides Complete Interface**: All 8 tools cover sync, analysis, query, and write operations
 4. **Maintains Security**: Internal API pattern keeps external exposure minimal
 5. **Supports Extensibility**: New tools can be added easily following the pattern

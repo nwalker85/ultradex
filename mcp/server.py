@@ -1,4 +1,4 @@
-"""MCP Server for Hrafngrima - exposes contact analysis tools to Jarvis"""
+"""MCP Server for Ultradex - exposes contact analysis tools to Jarvis"""
 
 import json
 import logging
@@ -8,19 +8,19 @@ from datetime import datetime
 from mcp.server import Server
 from mcp.types import Tool, TextContent, ToolResult
 
-from .client import HrafngrimaAPIClient
+from .client import UltradexAPIClient
 from .tools import TOOLS
 
 logger = logging.getLogger(__name__)
 
 
-class HrafngrimaMCPServer:
-    """MCP server exposing Hrafngrima tools for Jarvis integration"""
+class UltradexMCPServer:
+    """MCP server exposing Ultradex tools for Jarvis integration"""
     
     def __init__(self, api_base_url: str = "http://localhost:8000"):
         self.api_base_url = api_base_url
-        self.server = Server("hrafngrima")
-        self.api_client = HrafngrimaAPIClient(api_base_url)
+        self.server = Server("ultradex")
+        self.api_client = UltradexAPIClient(api_base_url)
         self._register_tools()
     
     def _register_tools(self):
@@ -33,21 +33,21 @@ class HrafngrimaMCPServer:
     async def _execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> ToolResult:
         """Execute a tool and return the result"""
         try:
-            if tool_name == "hrafngrima/sync_contacts":
+            if tool_name == "ultradex/sync_contacts":
                 result = await self._sync_contacts()
-            elif tool_name == "hrafngrima/analyze_contacts":
+            elif tool_name == "ultradex/analyze_contacts":
                 result = await self._analyze_contacts(arguments.get("limit"))
-            elif tool_name == "hrafngrima/get_contacts":
+            elif tool_name == "ultradex/get_contacts":
                 result = await self._get_contacts()
-            elif tool_name == "hrafngrima/get_contact":
+            elif tool_name == "ultradex/get_contact":
                 result = await self._get_contact(arguments["contact_id"])
-            elif tool_name == "hrafngrima/get_neglected_contacts":
+            elif tool_name == "ultradex/get_neglected_contacts":
                 result = await self._get_neglected_contacts()
-            elif tool_name == "hrafngrima/write_note":
+            elif tool_name == "ultradex/write_note":
                 result = await self._write_note(arguments["contact_id"], arguments["note"])
-            elif tool_name == "hrafngrima/get_analysis_stats":
+            elif tool_name == "ultradex/get_analysis_stats":
                 result = await self._get_analysis_stats()
-            elif tool_name == "hrafngrima/get_analysis_history":
+            elif tool_name == "ultradex/get_analysis_history":
                 result = await self._get_analysis_history(arguments.get("limit", 10))
             else:
                 return ToolResult(
@@ -162,7 +162,7 @@ class HrafngrimaMCPServer:
         Args:
             stdio: If True, use stdio for transport. If False, use other transport.
         """
-        logger.info(f"Starting Hrafngrima MCP server (API: {self.api_base_url})...")
+        logger.info(f"Starting Ultradex MCP server (API: {self.api_base_url})...")
         
         # Check API health before starting
         try:
@@ -181,4 +181,4 @@ class HrafngrimaMCPServer:
     async def close(self):
         """Close the server and cleanup"""
         await self.api_client.close()
-        logger.info("Hrafngrima MCP server closed")
+        logger.info("Ultradex MCP server closed")

@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ravenhelm/hrafngrima-cli/pkg/client"
+	"github.com/ravenhelm/ultradex-cli/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +47,7 @@ Use --limit to analyze only N contacts instead of all.`,
 		fmt.Printf("  Timestamp: %s\n", result.Timestamp.Format("2006-01-02 15:04:05"))
 
 		if result.Neglected > 0 {
-			fmt.Printf("\n⚠ Found %d neglected high-value contacts. Use 'hrafngrima contacts neglected' to see them.\n", result.Neglected)
+			fmt.Printf("\n⚠ Found %d neglected high-value contacts. Use 'ultradex contacts neglected' to see them.\n", result.Neglected)
 		}
 
 		return nil

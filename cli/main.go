@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ravenhelm/hrafngrima-cli/cmd"
+	"github.com/ravenhelm/ultradex-cli/cmd"
 )
 
 func main() {

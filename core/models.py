@@ -1,4 +1,4 @@
-"""Data models for Hrafngrima using Pydantic and SQLAlchemy"""
+"""Data models for Ultradex using Pydantic and SQLAlchemy"""
 
 from datetime import datetime
 from typing import Optional, List

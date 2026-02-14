@@ -1,4 +1,4 @@
-# Hrafngrima - Complete Project Summary
+# Ultradex - Complete Project Summary
 
 ## Project Status: ✅ COMPLETE
 
@@ -32,7 +32,7 @@ A complete AI-powered networking relationship assistant with internal API, MCP i
                   ┌───────────────┴───────────────┐
                   │                               │
             ┌─────▼─────────────────────────────┐ │
-            │ Hrafngrima FastAPI (Internal)     │ │
+            │ Ultradex FastAPI (Internal)     │ │
             ├──────────────────────────────────┤ │
             │ /api/v1/                         │ │
             │  - contacts/*                    │ │
@@ -192,19 +192,19 @@ Full-featured CLI with:
 
 ```bash
 # Terminal 1: Start API + DB
-cd ~/src/products/hrafngrima
+cd ~/src/products/ultradex
 docker-compose up
 
 # Terminal 2: Test CLI
-cd ~/src/products/hrafngrima/cli
+cd ~/src/products/ultradex/cli
 make install
-hrafngrima health
-hrafngrima sync
-hrafngrima analyze
-hrafngrima contacts neglected
+ultradex health
+ultradex sync
+ultradex analyze
+ultradex contacts neglected
 
 # Terminal 3: Start MCP for Jarvis
-cd ~/src/products/hrafngrima/mcp
+cd ~/src/products/ultradex/mcp
 python run_server.py
 
 # Terminal 4: Use with Jarvis
@@ -219,14 +219,14 @@ cd ~/src/products/theviking/jarvis
 docker-compose build
 
 # Push to registry
-docker tag hrafngrima-api:latest registry.example.com/hrafngrima-api:1.0.0
-docker push registry.example.com/hrafngrima-api:1.0.0
+docker tag ultradex-api:latest registry.example.com/ultradex-api:1.0.0
+docker push registry.example.com/ultradex-api:1.0.0
 
 # Deploy to Kubernetes
-kubectl apply -f k8s/hrafngrima.yaml
+kubectl apply -f k8s/ultradex.yaml
 
 # Or on Sleipner
-ssh ravenhelm@sleipner docker pull registry.example.com/hrafngrima-api:1.0.0
+ssh ravenhelm@sleipner docker pull registry.example.com/ultradex-api:1.0.0
 ssh ravenhelm@sleipner docker run ...
 ```
 
@@ -236,41 +236,41 @@ ssh ravenhelm@sleipner docker run ...
 
 ```bash
 # Sync from Dex
-hrafngrima sync
+ultradex sync
 
 # Run analysis
-hrafngrima analyze
+ultradex analyze
 
 # See neglected contacts
-hrafngrima contacts neglected
+ultradex contacts neglected
 
 # Get details on someone
-hrafngrima contacts view dex-123
+ultradex contacts view dex-123
 
 # Check costs
-hrafngrima stats
+ultradex stats
 
 # Manage config
-hrafngrima config set api http://api.example.com:8000
+ultradex config set api http://api.example.com:8000
 ```
 
 ### Jarvis Voice Commands
 
 ```
 "Sync my contacts"
-→ Calls hrafngrima/sync_contacts
+→ Calls ultradex/sync_contacts
 
 "Analyze my relationships"
-→ Calls hrafngrima/analyze_contacts
+→ Calls ultradex/analyze_contacts
 
 "Who have I neglected?"
-→ Calls hrafngrima/get_neglected_contacts
+→ Calls ultradex/get_neglected_contacts
 
 "Tell me about Jane"
-→ Calls hrafngrima/get_contact
+→ Calls ultradex/get_contact
 
 "Note that I spoke with Jane"
-→ Calls hrafngrima/write_note
+→ Calls ultradex/write_note
 ```
 
 ### API Direct Access
@@ -315,7 +315,7 @@ asyncio.run(main())
 ## Directory Structure
 
 ```
-hrafngrima/
+ultradex/
 ├── core/                    # Business logic (Python)
 │   ├── models.py
 │   ├── database.py
@@ -433,7 +433,7 @@ hrafngrima/
 
 ### Health Checks
 ```bash
-hrafngrima health           # CLI
+ultradex health           # CLI
 curl /health               # API
 ```
 
@@ -521,7 +521,7 @@ curl /health               # API
 ## Support
 
 ### Development
-- Code: `~/src/products/hrafngrima`
+- Code: `~/src/products/ultradex`
 - Issues: GitHub Issues
 - Docs: README.md files
 
@@ -543,7 +543,7 @@ To hand off this project:
 
 ## Conclusion
 
-Hrafngrima is a **complete, production-ready system** for managing professional relationships with AI assistance.
+Ultradex is a **complete, production-ready system** for managing professional relationships with AI assistance.
 
 **Key Achievements:**
 - ✅ Robust internal API with proper error handling
@@ -557,15 +557,15 @@ Hrafngrima is a **complete, production-ready system** for managing professional 
 **Quick Start:**
 ```bash
 # One-time setup
-cd ~/src/products/hrafngrima
+cd ~/src/products/ultradex
 docker-compose up          # Start API
 cd cli && make install     # Install CLI
-hrafngrima health          # Verify it works
+ultradex health          # Verify it works
 
 # Daily use
-hrafngrima sync            # Get latest contacts
-hrafngrima analyze         # Run AI analysis
-hrafngrima contacts neglected  # See who to reach out to
+ultradex sync            # Get latest contacts
+ultradex analyze         # Run AI analysis
+ultradex contacts neglected  # See who to reach out to
 ```
 
 **Status: READY FOR PRODUCTION** ✅

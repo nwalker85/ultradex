@@ -1,4 +1,4 @@
-# Hrafngrima - AI-Powered Networking Relationship Assistant
+# Ultradex - AI-Powered Networking Relationship Assistant
 
 A Python/FastAPI backend service that identifies high-value professional contacts you've neglected and provides AI-generated outreach strategies.
 
@@ -55,7 +55,7 @@ A Python/FastAPI backend service that identifies high-value professional contact
 
 1. **Clone and install:**
    ```bash
-   cd ~/src/products/hrafngrima
+   cd ~/src/products/ultradex
    python -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
@@ -204,7 +204,7 @@ HTTP status codes:
 ### Project Structure
 
 ```
-hrafngrima/
+ultradex/
 ├── core/                    # Business logic
 │   ├── models.py            # Data models (Pydantic + SQLAlchemy)
 │   ├── database.py          # Database setup & sessions

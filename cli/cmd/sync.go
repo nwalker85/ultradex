@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ravenhelm/hrafngrima-cli/pkg/client"
+	"github.com/ravenhelm/ultradex-cli/pkg/client"
 	"github.com/spf13/cobra"
 )
 

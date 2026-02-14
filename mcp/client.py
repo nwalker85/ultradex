@@ -1,12 +1,12 @@
-"""HTTP client for communicating with Hrafngrima API"""
+"""HTTP client for communicating with Ultradex API"""
 
 import httpx
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 
-class HrafngrimaAPIClient:
-    """Client for the internal Hrafngrima FastAPI service"""
+class UltradexAPIClient:
+    """Client for the internal Ultradex FastAPI service"""
     
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url.rstrip("/")

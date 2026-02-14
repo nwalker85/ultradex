@@ -1,5 +1,5 @@
-"""Hrafngrima MCP Server - Model Context Protocol integration for Jarvis"""
+"""Ultradex MCP Server - Model Context Protocol integration for Jarvis"""
 
-from .server import HrafngrimaMCPServer
+from .server import UltradexMCPServer
 
-__all__ = ["HrafngrimaMCPServer"]
+__all__ = ["UltradexMCPServer"]

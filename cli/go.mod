@@ -1,4 +1,4 @@
-module github.com/ravenhelm/hrafngrima-cli
+module github.com/nwalker85/ultradex/cli
 
 go 1.21
 

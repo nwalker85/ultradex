@@ -3,17 +3,17 @@ version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hrafngrima-postgres
+    container_name: ultradex-postgres
     environment:
-      POSTGRES_USER: hrafngrima
-      POSTGRES_PASSWORD: hrafngrima_dev_password
-      POSTGRES_DB: hrafngrima
+      POSTGRES_USER: ultradex
+      POSTGRES_PASSWORD: ultradex_dev_password
+      POSTGRES_DB: ultradex
     ports:
       - "5432:5432"
     volumes:
-      - hrafngrima_db:/var/lib/postgresql/data
+      - ultradex_db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hrafngrima"]
+      test: ["CMD-SHELL", "pg_isready -U ultradex"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,9 +22,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: hrafngrima-api
+    container_name: ultradex-api
     environment:
-      DATABASE_URL: postgresql://hrafngrima:hrafngrima_dev_password@postgres:5432/hrafngrima
+      DATABASE_URL: postgresql://ultradex:ultradex_dev_password@postgres:5432/ultradex
       DEX_API_KEY: ${DEX_API_KEY}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
     ports:
@@ -37,4 +37,4 @@ services:
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
-  hrafngrima_db:
+  ultradex_db:

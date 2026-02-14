@@ -1,4 +1,4 @@
-"""Hrafngrima core business logic"""
+"""Ultradex core business logic"""
 
 from .models import (
     ContactBase,

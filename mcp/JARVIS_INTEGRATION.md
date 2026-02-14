@@ -1,6 +1,6 @@
-# Hrafngrima MCP Integration with Jarvis
+# Ultradex MCP Integration with Jarvis
 
-Guide for integrating Hrafngrima MCP server with Jarvis (The Viking voice AI agent).
+Guide for integrating Ultradex MCP server with Jarvis (The Viking voice AI agent).
 
 ## Quick Start
 
@@ -9,26 +9,26 @@ Guide for integrating Hrafngrima MCP server with Jarvis (The Viking voice AI age
 ```bash
 # Assuming Jarvis is at ~/src/products/theviking/jarvis/
 
-# Copy Hrafngrima MCP files
-cp -r ~/src/products/hrafngrima/mcp ~/src/products/theviking/jarvis/mcp-servers/hrafngrima
+# Copy Ultradex MCP files
+cp -r ~/src/products/ultradex/mcp ~/src/products/theviking/jarvis/mcp-servers/ultradex
 
 # Or create a symlink for development
-ln -s ~/src/products/hrafngrima/mcp ~/src/products/theviking/jarvis/mcp-servers/hrafngrima
+ln -s ~/src/products/ultradex/mcp ~/src/products/theviking/jarvis/mcp-servers/ultradex
 ```
 
 ### 2. Configure Jarvis
 
-Update Jarvis FastAPI configuration to include Hrafngrima MCP server:
+Update Jarvis FastAPI configuration to include Ultradex MCP server:
 
 **File:** `~/src/products/theviking/jarvis/api/config.py` or equivalent
 
 ```python
 MCP_SERVERS = {
-    "hrafngrima": {
+    "ultradex": {
         "type": "stdio",
         "command": "python",
         "args": [
-            "/path/to/hrafngrima/mcp/run_server.py"
+            "/path/to/ultradex/mcp/run_server.py"
         ],
         "env": {
             "HRAFNGRIMA_API_URL": "http://localhost:8000",
@@ -45,10 +45,10 @@ Or using environment variables:
 import os
 
 MCP_SERVERS = {
-    "hrafngrima": {
+    "ultradex": {
         "type": "stdio",
         "command": "python",
-        "args": [os.getenv("HRAFNGRIMA_MCP_PATH", "/path/to/hrafngrima/mcp/run_server.py")],
+        "args": [os.getenv("HRAFNGRIMA_MCP_PATH", "/path/to/ultradex/mcp/run_server.py")],
         "env": {
             "HRAFNGRIMA_API_URL": os.getenv("HRAFNGRIMA_API_URL", "http://localhost:8000"),
             "PYTHONUNBUFFERED": "1"
@@ -57,11 +57,11 @@ MCP_SERVERS = {
 }
 ```
 
-### 3. Start Jarvis with Hrafngrima
+### 3. Start Jarvis with Ultradex
 
 ```bash
-# Make sure Hrafngrima API is running
-cd ~/src/products/hrafngrima
+# Make sure Ultradex API is running
+cd ~/src/products/ultradex
 docker-compose up -d
 
 # Start Jarvis
@@ -71,15 +71,15 @@ uvicorn api.main:app --reload
 
 ### 4. Test Integration
 
-Test that Jarvis can call Hrafngrima tools:
+Test that Jarvis can call Ultradex tools:
 
 ```bash
 # Via curl
 curl -X POST http://localhost:8000/jarvis/mcp/call \
   -H "Content-Type: application/json" \
   -d '{
-    "server": "hrafngrima",
-    "tool": "hrafngrima/get_contacts",
+    "server": "ultradex",
+    "tool": "ultradex/get_contacts",
     "arguments": {}
   }'
 
@@ -92,8 +92,8 @@ async def test():
         response = await client.post(
             "http://localhost:8000/jarvis/mcp/call",
             json={
-                "server": "hrafngrima",
-                "tool": "hrafngrima/get_neglected_contacts",
+                "server": "ultradex",
+                "tool": "ultradex/get_neglected_contacts",
                 "arguments": {}
             }
         )
@@ -172,7 +172,7 @@ AI framework and multi-agent systems. Interest in LLM optimization tools.'"
           ┌───────┴───────┐
           ▼               ▼
   ┌──────────────┐  ┌──────────────────┐
-  │ Other MCPs   │  │ Hrafngrima MCP   │
+  │ Other MCPs   │  │ Ultradex MCP   │
   └──────────────┘  │ - sync_contacts  │
                     │ - analyze        │
                     │ - get_neglected  │
@@ -181,7 +181,7 @@ AI framework and multi-agent systems. Interest in LLM optimization tools.'"
                              │
                              ▼
                     ┌──────────────────┐
-                    │ Hrafngrima API   │
+                    │ Ultradex API   │
                     └────────┬─────────┘
                              │
                     ┌────────┴────────┐
@@ -194,12 +194,12 @@ AI framework and multi-agent systems. Interest in LLM optimization tools.'"
 
 ## Error Handling
 
-If the Hrafngrima MCP server fails to start:
+If the Ultradex MCP server fails to start:
 
 ```
 Jarvis: "The contact management system is currently unavailable. 
-The Hrafngrima API may not be running. Please check that:
-1. The Hrafngrima API server is running (docker-compose up)
+The Ultradex API may not be running. Please check that:
+1. The Ultradex API server is running (docker-compose up)
 2. It's accessible at the configured URL (http://localhost:8000)
 3. Your API keys (DEX_API_KEY, CLAUDE_API_KEY) are configured correctly"
 ```
@@ -209,17 +209,17 @@ The Hrafngrima API may not be running. Please check that:
 ### Check MCP Server Logs
 
 ```bash
-# View Hrafngrima MCP logs
-docker logs hrafngrima-api 2>&1 | grep -i mcp
+# View Ultradex MCP logs
+docker logs ultradex-api 2>&1 | grep -i mcp
 
 # Or check Jarvis logs for MCP errors
-docker logs jarvis-api 2>&1 | grep -E "(hrafngrima|MCP|ERROR)"
+docker logs jarvis-api 2>&1 | grep -E "(ultradex|MCP|ERROR)"
 ```
 
 ### Health Checks
 
 ```bash
-# Check Hrafngrima API
+# Check Ultradex API
 curl http://localhost:8000/health
 # Expected: {"status":"ok","timestamp":"..."}
 
@@ -233,12 +233,12 @@ curl http://localhost:8001/health/mcp
 ### Testing MCP Server Standalone
 
 ```bash
-# Terminal 1: Start Hrafngrima API
-cd ~/src/products/hrafngrima
+# Terminal 1: Start Ultradex API
+cd ~/src/products/ultradex
 docker-compose up
 
 # Terminal 2: Test MCP server
-cd ~/src/products/hrafngrima
+cd ~/src/products/ultradex
 python mcp/test_server.py
 
 # Terminal 3: Run MCP server directly
@@ -247,7 +247,7 @@ python mcp/run_server.py
 
 ### Adding New Tools
 
-To add new tools to Hrafngrima that Jarvis can use:
+To add new tools to Ultradex that Jarvis can use:
 
 1. Add endpoint to FastAPI API (`api/routes/`)
 2. Add tool definition to `mcp/tools.py`
@@ -266,7 +266,7 @@ async def send_email(contact_id: str, subject: str, body: str):
 
 # 2. Tool definition (mcp/tools.py)
 {
-    "name": "hrafngrima/send_email",
+    "name": "ultradex/send_email",
     "description": "Send an email to a contact...",
     "inputSchema": { ... }
 }
@@ -305,7 +305,7 @@ Consider caching in Jarvis to reduce API calls:
 # Cache contacts for 1 hour
 @cache(ttl=3600)
 async def get_contacts():
-    return await mcp.call_tool("hrafngrima/get_contacts")
+    return await mcp.call_tool("ultradex/get_contacts")
 ```
 
 ## Troubleshooting
@@ -319,7 +319,7 @@ python --version  # Need 3.11+
 # Check dependencies
 pip list | grep mcp
 
-# Check Hrafngrima API is running
+# Check Ultradex API is running
 curl http://localhost:8000/health
 
 # Run with debug
@@ -330,10 +330,10 @@ PYTHONUNBUFFERED=1 python mcp/run_server.py 2>&1
 
 ```bash
 # Check MCP server configuration in Jarvis
-grep -r "hrafngrima" ~/src/products/theviking/jarvis/
+grep -r "ultradex" ~/src/products/theviking/jarvis/
 
 # Verify MCP server path
-ls -la /path/to/hrafngrima/mcp/run_server.py
+ls -la /path/to/ultradex/mcp/run_server.py
 
 # Test MCP directly
 python mcp/test_server.py
@@ -346,7 +346,7 @@ python mcp/test_server.py
 time curl http://localhost:8000/api/v1/contacts
 
 # Check Claude API latency
-# (See Hrafngrima logs for API call times)
+# (See Ultradex logs for API call times)
 
 # Consider using limit parameter for analysis
 curl -X POST http://localhost:8000/api/v1/analyze?limit=10

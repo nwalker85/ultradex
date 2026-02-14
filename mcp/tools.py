@@ -1,11 +1,11 @@
-"""MCP tool definitions for Hrafngrima"""
+"""MCP tool definitions for Ultradex"""
 
 from typing import Any, Dict, List
 
 # Tool definitions that describe what MCP tools are available
 TOOLS: List[Dict[str, Any]] = [
     {
-        "name": "hrafngrima/sync_contacts",
+        "name": "ultradex/sync_contacts",
         "description": "Sync all contacts from Dex to the local database. This fetches the latest contact data from your Dex account and updates the local cache.",
         "inputSchema": {
             "type": "object",
@@ -14,7 +14,7 @@ TOOLS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "hrafngrima/analyze_contacts",
+        "name": "ultradex/analyze_contacts",
         "description": "Run AI analysis on contacts to identify high-value relationships and neglected contacts. Claude analyzes each contact's value (0-100 score) and generates personalized outreach strategies.",
         "inputSchema": {
             "type": "object",
@@ -29,7 +29,7 @@ TOOLS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "hrafngrima/get_contacts",
+        "name": "ultradex/get_contacts",
         "description": "Get all cached contacts from the database. Returns all contacts with their current status and AI analysis results.",
         "inputSchema": {
             "type": "object",
@@ -38,7 +38,7 @@ TOOLS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "hrafngrima/get_contact",
+        "name": "ultradex/get_contact",
         "description": "Get a specific contact by ID. Returns detailed information including AI analysis, last contact date, and AI-generated outreach strategy.",
         "inputSchema": {
             "type": "object",
@@ -52,7 +52,7 @@ TOOLS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "hrafngrima/get_neglected_contacts",
+        "name": "ultradex/get_neglected_contacts",
         "description": "Get all neglected high-value contacts. Returns contacts that have a value score ≥60 and haven't been contacted in ≥30 days.",
         "inputSchema": {
             "type": "object",
@@ -61,7 +61,7 @@ TOOLS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "hrafngrima/write_note",
+        "name": "ultradex/write_note",
         "description": "Write a note to a contact in Dex. This adds a note to the contact's timeline in Dex, keeping it as the single source of truth.",
         "inputSchema": {
             "type": "object",
@@ -79,7 +79,7 @@ TOOLS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "hrafngrima/get_analysis_stats",
+        "name": "ultradex/get_analysis_stats",
         "description": "Get aggregate statistics about contact analysis. Returns total runs, contacts analyzed, neglected contacts found, and cost tracking.",
         "inputSchema": {
             "type": "object",
@@ -88,7 +88,7 @@ TOOLS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "hrafngrima/get_analysis_history",
+        "name": "ultradex/get_analysis_history",
         "description": "Get recent analysis runs. Returns a history of when analysis was performed, how many contacts were analyzed, and the results.",
         "inputSchema": {
             "type": "object",

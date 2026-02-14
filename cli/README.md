@@ -1,10 +1,10 @@
-# Hrafngrima CLI
+# Ultradex CLI
 
-Command-line interface for Hrafngrima - manage your professional relationships with AI.
+Command-line interface for Ultradex - manage your professional relationships with AI.
 
 ## Overview
 
-The Hrafngrima CLI provides administrative and operational commands for:
+The Ultradex CLI provides administrative and operational commands for:
 - Syncing contacts from Dex
 - Running AI analysis on relationships
 - Viewing contact details and AI insights
@@ -14,28 +14,28 @@ The Hrafngrima CLI provides administrative and operational commands for:
 ## Requirements
 
 - Go 1.21+
-- Hrafngrima API running (docker-compose up)
+- Ultradex API running (docker-compose up)
 
 ## Installation
 
 ### From Source
 
 ```bash
-cd ~/src/products/hrafngrima/cli
+cd ~/src/products/ultradex/cli
 make install
 
 # Verify installation
-hrafngrima --version
+ultradex --version
 ```
 
 ### Manual Build
 
 ```bash
-cd ~/src/products/hrafngrima/cli
-go build -o bin/hrafngrima
+cd ~/src/products/ultradex/cli
+go build -o bin/ultradex
 
 # Copy to PATH
-cp bin/hrafngrima ~/.local/bin/
+cp bin/ultradex ~/.local/bin/
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
@@ -43,17 +43,17 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ```bash
 # Check API connectivity
-hrafngrima health
+ultradex health
 
 # Sync contacts from Dex
-hrafngrima sync
+ultradex sync
 
 # Run analysis
-hrafngrima analyze
+ultradex analyze
 
 # View results
-hrafngrima contacts neglected
-hrafngrima stats
+ultradex contacts neglected
+ultradex stats
 ```
 
 ## Commands
@@ -63,7 +63,7 @@ hrafngrima stats
 Sync all contacts from Dex to the local database.
 
 ```bash
-hrafngrima sync
+ultradex sync
 ```
 
 **Output:**
@@ -80,13 +80,13 @@ Run AI analysis on contacts to identify neglected relationships.
 
 ```bash
 # Analyze all contacts
-hrafngrima analyze
+ultradex analyze
 
 # Analyze only first 50
-hrafngrima analyze --limit 50
+ultradex analyze --limit 50
 
 # Short flag
-hrafngrima analyze -l 10
+ultradex analyze -l 10
 ```
 
 **Output:**
@@ -98,7 +98,7 @@ Running analysis... (limit: 10 contacts)
   Tokens used: 5000 (~$0.15)
   Timestamp: 2026-02-14 10:35:00
 
-⚠ Found 2 neglected high-value contacts. Use 'hrafngrima contacts neglected' to see them.
+⚠ Found 2 neglected high-value contacts. Use 'ultradex contacts neglected' to see them.
 ```
 
 ### contacts
@@ -110,7 +110,7 @@ View and manage contacts.
 List all cached contacts with AI scores.
 
 ```bash
-hrafngrima contacts list
+ultradex contacts list
 ```
 
 **Output:**
@@ -127,7 +127,7 @@ Total: 247 contacts
 Show high-value contacts you haven't reached out to recently.
 
 ```bash
-hrafngrima contacts neglected
+ultradex contacts neglected
 ```
 
 **Output:**
@@ -144,7 +144,7 @@ Neglected: 8 high-value contacts need attention
 View detailed information about a specific contact.
 
 ```bash
-hrafngrima contacts view dex-123
+ultradex contacts view dex-123
 ```
 
 **Output:**
@@ -171,7 +171,7 @@ Met at AI conference 2025. Interested in agent frameworks.
 View analysis statistics and cost tracking.
 
 ```bash
-hrafngrima stats
+ultradex stats
 ```
 
 **Output:**
@@ -200,12 +200,12 @@ Last Updated: 2026-02-14 10:45:00
 Check API connectivity and service status.
 
 ```bash
-hrafngrima health
+ultradex health
 ```
 
 **Output:**
 ```
-Checking Hrafngrima API at http://localhost:8000...
+Checking Ultradex API at http://localhost:8000...
 ✓ API is healthy
   Status: ok
   Timestamp: 2026-02-14 10:50:00
@@ -220,7 +220,7 @@ Manage CLI configuration.
 Display current configuration.
 
 ```bash
-hrafngrima config show
+ultradex config show
 ```
 
 **Output:**
@@ -230,7 +230,7 @@ API URL: http://localhost:8000
 Output Format: table
 Timeout: 60 seconds
 
-Config file: /home/user/.hrafngrima/config.yaml
+Config file: /home/user/.ultradex/config.yaml
 (Using defaults - no config file yet)
 ```
 
@@ -239,9 +239,9 @@ Config file: /home/user/.hrafngrima/config.yaml
 Set a configuration value.
 
 ```bash
-hrafngrima config set api http://api.example.com:8000
-hrafngrima config set output json
-hrafngrima config set timeout 120
+ultradex config set api http://api.example.com:8000
+ultradex config set output json
+ultradex config set timeout 120
 ```
 
 #### config get
@@ -249,7 +249,7 @@ hrafngrima config set timeout 120
 Get a specific configuration value.
 
 ```bash
-hrafngrima config get api
+ultradex config get api
 # Output: api = http://localhost:8000
 ```
 
@@ -258,22 +258,22 @@ hrafngrima config get api
 Reset configuration to defaults.
 
 ```bash
-hrafngrima config reset
+ultradex config reset
 ```
 
 ## Configuration
 
-Configuration is stored in `~/.hrafngrima/config.yaml`.
+Configuration is stored in `~/.ultradex/config.yaml`.
 
 ### Via Command
 
 ```bash
-hrafngrima config set api http://api.example.com:8000
+ultradex config set api http://api.example.com:8000
 ```
 
 ### Manually
 
-Create `~/.hrafngrima/config.yaml`:
+Create `~/.ultradex/config.yaml`:
 
 ```yaml
 api: http://localhost:8000
@@ -297,10 +297,10 @@ Available on all commands:
 
 ```bash
 # Specify config file
-hrafngrima --config /path/to/config.yaml [command]
+ultradex --config /path/to/config.yaml [command]
 
 # Specify API URL
-hrafngrima --api http://api.example.com:8000 [command]
+ultradex --api http://api.example.com:8000 [command]
 ```
 
 ## Examples
@@ -309,38 +309,38 @@ hrafngrima --api http://api.example.com:8000 [command]
 
 ```bash
 # Morning: Check what's happening
-hrafngrima health
-hrafngrima stats
+ultradex health
+ultradex stats
 
 # Run analysis if needed
-hrafngrima analyze
+ultradex analyze
 
 # See who needs attention
-hrafngrima contacts neglected
+ultradex contacts neglected
 
 # Get details on someone
-hrafngrima contacts view dex-456
+ultradex contacts view dex-456
 ```
 
 ### Batch Operations
 
 ```bash
 # Sync and analyze
-hrafngrima sync && hrafngrima analyze
+ultradex sync && ultradex analyze
 
 # Check results
-hrafngrima contacts neglected | head -5
-hrafngrima stats
+ultradex contacts neglected | head -5
+ultradex stats
 ```
 
 ### Configuration
 
 ```bash
 # Set API to production
-hrafngrima config set api https://api.production.example.com:8000
+ultradex config set api https://api.production.example.com:8000
 
 # Or temporarily override
-hrafngrima --api https://api.production.example.com:8000 contacts list
+ultradex --api https://api.production.example.com:8000 contacts list
 ```
 
 ## Output Formats
@@ -348,21 +348,21 @@ hrafngrima --api https://api.production.example.com:8000 contacts list
 ### Table (Default)
 
 ```bash
-hrafngrima contacts list
+ultradex contacts list
 # Creates tabular output with alignment
 ```
 
 ### JSON (Future)
 
 ```bash
-hrafngrima --output json contacts list
+ultradex --output json contacts list
 # Returns raw JSON for scripting
 ```
 
 ### CSV (Future)
 
 ```bash
-hrafngrima --output csv contacts list
+ultradex --output csv contacts list
 # Returns CSV for import to spreadsheet
 ```
 
@@ -373,18 +373,18 @@ hrafngrima --output csv contacts list
 ```
 ✗ API is unreachable: connection refused
 
-Make sure the Hrafngrima API is running:
+Make sure the Ultradex API is running:
   docker-compose up
 ```
 
 **Solution:**
 ```bash
 # Start API
-cd ~/src/products/hrafngrima
+cd ~/src/products/ultradex
 docker-compose up
 
 # Or check what's running
-docker ps | grep hrafngrima
+docker ps | grep ultradex
 ```
 
 ### Invalid Contact ID
@@ -396,8 +396,8 @@ API error (404): Contact not found
 **Solution:**
 ```bash
 # List contacts to find valid ID
-hrafngrima contacts list
-hrafngrima contacts view [valid-id]
+ultradex contacts list
+ultradex contacts view [valid-id]
 ```
 
 ### Rate Limiting
@@ -406,7 +406,7 @@ If API returns 429 (Too Many Requests), wait before retrying:
 
 ```bash
 sleep 5
-hrafngrima [command]
+ultradex [command]
 ```
 
 ## Building
@@ -415,10 +415,10 @@ hrafngrima [command]
 
 ```bash
 cd cli
-go build -o bin/hrafngrima
+go build -o bin/ultradex
 
 # Test
-./bin/hrafngrima health
+./bin/ultradex health
 ```
 
 ### Release Build
@@ -428,20 +428,20 @@ cd cli
 make clean
 make build
 
-# Creates bin/hrafngrima
+# Creates bin/ultradex
 ```
 
 ### Cross-Platform Build
 
 ```bash
 # macOS
-GOOS=darwin GOARCH=arm64 go build -o bin/hrafngrima-darwin
+GOOS=darwin GOARCH=arm64 go build -o bin/ultradex-darwin
 
 # Linux
-GOOS=linux GOARCH=amd64 go build -o bin/hrafngrima-linux
+GOOS=linux GOARCH=amd64 go build -o bin/ultradex-linux
 
 # Windows
-GOOS=windows GOARCH=amd64 go build -o bin/hrafngrima.exe
+GOOS=windows GOARCH=amd64 go build -o bin/ultradex.exe
 ```
 
 ## Development
@@ -519,12 +519,12 @@ brew install go
 
 ### "API is unreachable"
 
-Check that Hrafngrima API is running:
+Check that Ultradex API is running:
 ```bash
 curl http://localhost:8000/health
 
 # If not running, start it
-cd ~/src/products/hrafngrima
+cd ~/src/products/ultradex
 docker-compose up
 ```
 
@@ -532,8 +532,8 @@ docker-compose up
 
 Try resetting config:
 ```bash
-hrafngrima config reset
-hrafngrima health
+ultradex config reset
+ultradex health
 ```
 
 ## Performance

@@ -14,9 +14,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "hrafngrima",
-	Short: "CLI for Hrafngrima - AI-powered networking assistant",
-	Long: `Hrafngrima CLI - Manage your professional relationships with AI.
+	Use:   "ultradex",
+	Short: "CLI for Ultradex - AI-powered networking assistant",
+	Long: `Ultradex CLI - Manage your professional relationships with AI.
 
 Sync contacts from Dex, run analysis to identify neglected high-value relationships,
 and get AI-generated outreach strategies.`,
@@ -30,8 +30,8 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.hrafngrima/config.yaml)")
-	rootCmd.PersistentFlags().StringVar(&apiURL, "api", "http://localhost:8000", "Hrafngrima API URL")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.ultradex/config.yaml)")
+	rootCmd.PersistentFlags().StringVar(&apiURL, "api", "http://localhost:8000", "Ultradex API URL")
 
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(analyzeCmd)
@@ -50,7 +50,7 @@ func initConfig() {
 			fmt.Fprintf(os.Stderr, "Error getting home directory: %v\n", err)
 			return
 		}
-		viper.AddConfigPath(home + "/.hrafngrima")
+		viper.AddConfigPath(home + "/.ultradex")
 		viper.SetConfigType("yaml")
 		viper.SetConfigName("config")
 	}

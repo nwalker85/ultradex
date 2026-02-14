@@ -1,4 +1,4 @@
-# Hrafngrima CLI Development Guide
+# Ultradex CLI Development Guide
 
 ## Setup
 
@@ -15,17 +15,17 @@ go version  # Should be 1.21+
 ### Clone and Build
 
 ```bash
-cd ~/src/products/hrafngrima/cli
+cd ~/src/products/ultradex/cli
 
 # Download dependencies
 go mod download
 go mod tidy
 
 # Build
-go build -o bin/hrafngrima
+go build -o bin/ultradex
 
 # Test
-./bin/hrafngrima health
+./bin/ultradex health
 ```
 
 ## Architecture
@@ -79,7 +79,7 @@ package cmd
 
 import (
     "fmt"
-    "github.com/ravenhelm/hrafngrima-cli/pkg/client"
+    "github.com/ravenhelm/ultradex-cli/pkg/client"
     "github.com/spf13/cobra"
 )
 
@@ -115,7 +115,7 @@ rootCmd.AddCommand(mycommandCmd)
 
 ```bash
 make build
-./bin/hrafngrima mycommand
+./bin/ultradex mycommand
 ```
 
 ## Adding API Endpoints
@@ -159,7 +159,7 @@ Test against real API:
 
 ```bash
 # Start API
-cd ~/src/products/hrafngrima
+cd ~/src/products/ultradex
 docker-compose up
 
 # In another terminal
@@ -176,13 +176,13 @@ go run main.go analyze --limit 5
 make build
 
 # Test all commands
-./bin/hrafngrima health
-./bin/hrafngrima sync
-./bin/hrafngrima analyze
-./bin/hrafngrima contacts list
-./bin/hrafngrima contacts neglected
-./bin/hrafngrima stats
-./bin/hrafngrima config show
+./bin/ultradex health
+./bin/ultradex sync
+./bin/ultradex analyze
+./bin/ultradex contacts list
+./bin/ultradex contacts neglected
+./bin/ultradex stats
+./bin/ultradex config show
 ```
 
 ## Debugging
@@ -221,22 +221,22 @@ func (c *Client) get(path string, result interface{}) error {
 ### For macOS (ARM64)
 
 ```bash
-GOOS=darwin GOARCH=arm64 go build -o bin/hrafngrima-darwin-arm64
+GOOS=darwin GOARCH=arm64 go build -o bin/ultradex-darwin-arm64
 
 # Sign the binary (optional)
-codesign -s - bin/hrafngrima-darwin-arm64
+codesign -s - bin/ultradex-darwin-arm64
 ```
 
 ### For Linux
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o bin/hrafngrima-linux-amd64
+GOOS=linux GOARCH=amd64 go build -o bin/ultradex-linux-amd64
 ```
 
 ### For Windows
 
 ```bash
-GOOS=windows GOARCH=amd64 go build -o bin/hrafngrima.exe
+GOOS=windows GOARCH=amd64 go build -o bin/ultradex.exe
 ```
 
 ### Create Release Archive
@@ -247,11 +247,11 @@ VERSION=$(go run main.go --version | awk '{print $NF}')
 OS=$1
 ARCH=$2
 
-GOOS=$OS GOARCH=$ARCH go build -o bin/hrafngrima-$VERSION-$OS-$ARCH
+GOOS=$OS GOARCH=$ARCH go build -o bin/ultradex-$VERSION-$OS-$ARCH
 
 # Create tarball
 cd bin
-tar -czf hrafngrima-$VERSION-$OS-$ARCH.tar.gz hrafngrima-$VERSION-$OS-$ARCH
+tar -czf ultradex-$VERSION-$OS-$ARCH.tar.gz ultradex-$VERSION-$OS-$ARCH
 cd ..
 ```
 
@@ -294,8 +294,8 @@ var myCmd = &cobra.Command{
     Long: `Detailed description
     
     Examples:
-        hrafngrima mycommand
-        hrafngrima mycommand --flag value`,
+        ultradex mycommand
+        ultradex mycommand --flag value`,
 }
 ```
 
@@ -303,7 +303,7 @@ var myCmd = &cobra.Command{
 
 ```bash
 # Cobra can generate markdown docs
-go run main.go > hrafngrima.md
+go run main.go > ultradex.md
 ```
 
 ## Common Tasks
@@ -391,7 +391,7 @@ go mod tidy
 API not running:
 
 ```bash
-cd ~/src/products/hrafngrima
+cd ~/src/products/ultradex
 docker-compose up
 ```
 
@@ -399,7 +399,7 @@ docker-compose up
 
 ```bash
 # Use native ARM64 build
-GOOS=darwin GOARCH=arm64 go build -o bin/hrafngrima
+GOOS=darwin GOARCH=arm64 go build -o bin/ultradex
 ```
 
 ### "unexpected token" in JSON

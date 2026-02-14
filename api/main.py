@@ -1,4 +1,4 @@
-"""FastAPI application for Hrafngrima"""
+"""FastAPI application for Ultradex"""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +18,7 @@ from . import dependencies
 async def lifespan(app: FastAPI):
     """Initialize and cleanup resources"""
     # Startup
-    database_url = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/hrafngrima")
+    database_url = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/ultradex")
     dex_api_key = os.getenv("DEX_API_KEY")
     claude_api_key = os.getenv("CLAUDE_API_KEY")
     
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Hrafngrima API",
+    title="Ultradex API",
     description="AI-powered networking relationship assistant",
     version="2.0.0",
     lifespan=lifespan

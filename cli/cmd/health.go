@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ravenhelm/hrafngrima-cli/pkg/client"
+	"github.com/ravenhelm/ultradex-cli/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -13,11 +13,11 @@ var healthCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c := client.NewClient(apiURL)
 
-		fmt.Printf("Checking Hrafngrima API at %s...\n", apiURL)
+		fmt.Printf("Checking Ultradex API at %s...\n", apiURL)
 
 		health, err := c.HealthCheck()
 		if err != nil {
-			return fmt.Errorf("✗ API is unreachable: %w\n\nMake sure the Hrafngrima API is running:\n  docker-compose up", err)
+			return fmt.Errorf("✗ API is unreachable: %w\n\nMake sure the Ultradex API is running:\n  docker-compose up", err)
 		}
 
 		fmt.Printf("✓ API is healthy\n")

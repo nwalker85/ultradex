@@ -5,7 +5,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/ravenhelm/hrafngrima-cli/pkg/client"
+	"github.com/ravenhelm/ultradex-cli/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ var contactsListCmd = &cobra.Command{
 		}
 
 		if len(contacts) == 0 {
-			fmt.Printf("No contacts found. Run 'hrafngrima sync' first.\n")
+			fmt.Printf("No contacts found. Run 'ultradex sync' first.\n")
 			return nil
 		}
 

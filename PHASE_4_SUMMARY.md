@@ -7,11 +7,11 @@ Phase 4 implements a full-featured command-line interface (CLI) in Go for admini
 ## Architecture
 
 ```
-Hrafngrima CLI (Go)
+Ultradex CLI (Go)
     ↓
 HTTP Client (httpx)
     ↓
-Internal Hrafngrima API
+Internal Ultradex API
     ↓
 Dex API + Claude + PostgreSQL
 ```
@@ -47,35 +47,35 @@ Dex API + Claude + PostgreSQL
 ### Command Implementations
 
 **`cli/cmd/sync.go`** (30 lines)
-- `hrafngrima sync` - Fetch from Dex and update local DB
+- `ultradex sync` - Fetch from Dex and update local DB
 - Shows: count synced, status, timestamp
 
 **`cli/cmd/analyze.go`** (45 lines)
-- `hrafngrima analyze [--limit N]` - Run AI analysis
+- `ultradex analyze [--limit N]` - Run AI analysis
 - Shows: analyzed count, neglected count, tokens, cost
 - Optional limit flag for partial analysis
 
 **`cli/cmd/contacts.go`** (140 lines)
-- `hrafngrima contacts list` - Table view of all contacts
-- `hrafngrima contacts neglected` - High-value unmaintained contacts
-- `hrafngrima contacts view <id>` - Detailed contact info
+- `ultradex contacts list` - Table view of all contacts
+- `ultradex contacts neglected` - High-value unmaintained contacts
+- `ultradex contacts view <id>` - Detailed contact info
 - Three subcommands with Cobra
 
 **`cli/cmd/stats.go`** (45 lines)
-- `hrafngrima stats` - Aggregate analysis statistics
+- `ultradex stats` - Aggregate analysis statistics
 - Shows: total runs, contacts analyzed, neglected found, cost tracking
 - Displays recent run history
 
 **`cli/cmd/health.go`** (25 lines)
-- `hrafngrima health` - Check API connectivity
+- `ultradex health` - Check API connectivity
 - Verifies API is running and responding
 - Helpful error message if API down
 
 **`cli/cmd/config.go`** (115 lines)
-- `hrafngrima config show` - Display current config
-- `hrafngrima config set <key> <value>` - Set value
-- `hrafngrima config get <key>` - Get value
-- `hrafngrima config reset` - Reset to defaults
+- `ultradex config show` - Display current config
+- `ultradex config set <key> <value>` - Set value
+- `ultradex config get <key>` - Get value
+- `ultradex config reset` - Reset to defaults
 - Four subcommands for full config management
 
 ### Build & Configuration
@@ -121,43 +121,43 @@ Dex API + Claude + PostgreSQL
 
 ## Commands Available
 
-### hrafngrima sync
+### ultradex sync
 ```bash
-hrafngrima sync
+ultradex sync
 # Output: ✓ Successfully synced 247 contacts
 ```
 
-### hrafngrima analyze
+### ultradex analyze
 ```bash
-hrafngrima analyze [--limit 50]
+ultradex analyze [--limit 50]
 # Output: Analysis complete: 45 analyzed, 8 neglected ($0.68)
 ```
 
-### hrafngrima contacts
+### ultradex contacts
 ```bash
-hrafngrima contacts list              # All contacts in table
-hrafngrima contacts neglected         # High-value unmaintained (value≥60, days≥30)
-hrafngrima contacts view <contact-id> # Detailed view
+ultradex contacts list              # All contacts in table
+ultradex contacts neglected         # High-value unmaintained (value≥60, days≥30)
+ultradex contacts view <contact-id> # Detailed view
 ```
 
-### hrafngrima stats
+### ultradex stats
 ```bash
-hrafngrima stats
+ultradex stats
 # Output: Cost tracking, analysis history, statistics
 ```
 
-### hrafngrima health
+### ultradex health
 ```bash
-hrafngrima health
+ultradex health
 # Output: ✓ API is healthy, status: ok
 ```
 
-### hrafngrima config
+### ultradex config
 ```bash
-hrafngrima config show                    # Show all config
-hrafngrima config set api http://api:8000  # Set value
-hrafngrima config get api                # Get value
-hrafngrima config reset                  # Reset to defaults
+ultradex config show                    # Show all config
+ultradex config set api http://api:8000  # Set value
+ultradex config get api                # Get value
+ultradex config reset                  # Reset to defaults
 ```
 
 ## Building & Installation
@@ -165,36 +165,36 @@ hrafngrima config reset                  # Reset to defaults
 ### Build
 
 ```bash
-cd ~/src/products/hrafngrima/cli
+cd ~/src/products/ultradex/cli
 make build
-# Creates: bin/hrafngrima
+# Creates: bin/ultradex
 ```
 
 ### Install
 
 ```bash
 make install
-# Installs to: ~/.local/bin/hrafngrima
+# Installs to: ~/.local/bin/ultradex
 ```
 
 ### Cross-Platform
 
 ```bash
 # macOS ARM64
-GOOS=darwin GOARCH=arm64 go build -o bin/hrafngrima-darwin-arm64
+GOOS=darwin GOARCH=arm64 go build -o bin/ultradex-darwin-arm64
 
 # Linux x86_64
-GOOS=linux GOARCH=amd64 go build -o bin/hrafngrima-linux-amd64
+GOOS=linux GOARCH=amd64 go build -o bin/ultradex-linux-amd64
 
 # Windows x86_64
-GOOS=windows GOARCH=amd64 go build -o bin/hrafngrima.exe
+GOOS=windows GOARCH=amd64 go build -o bin/ultradex.exe
 ```
 
 ## Configuration
 
 ### File Location
 ```
-~/.hrafngrima/config.yaml
+~/.ultradex/config.yaml
 ```
 
 ### Configuration Keys
@@ -206,13 +206,13 @@ GOOS=windows GOARCH=amd64 go build -o bin/hrafngrima.exe
 
 ```bash
 # Via CLI
-hrafngrima config set api http://api.example.com:8000
+ultradex config set api http://api.example.com:8000
 
 # Via environment
 export HRAFNGRIMA_API=http://api.example.com:8000
 
 # Via command flag
-hrafngrima --api http://api.example.com:8000 contacts list
+ultradex --api http://api.example.com:8000 contacts list
 ```
 
 ## Typical Workflows
@@ -221,39 +221,39 @@ hrafngrima --api http://api.example.com:8000 contacts list
 
 ```bash
 # Is API healthy?
-hrafngrima health
+ultradex health
 
 # Run analysis
-hrafngrima analyze
+ultradex analyze
 
 # What needs attention?
-hrafngrima contacts neglected
+ultradex contacts neglected
 
 # Get full details on someone
-hrafngrima contacts view dex-123
+ultradex contacts view dex-123
 
 # Check costs
-hrafngrima stats
+ultradex stats
 ```
 
 ### Weekly Sync
 
 ```bash
 # Fresh data from Dex
-hrafngrima sync
+ultradex sync
 
 # Deep analysis
-hrafngrima analyze
+ultradex analyze
 
 # Full review
-hrafngrima stats
+ultradex stats
 ```
 
 ### Quick Stats
 
 ```bash
 # Just numbers
-hrafngrima stats
+ultradex stats
 ```
 
 ## Error Handling
@@ -262,18 +262,18 @@ The CLI provides helpful error messages:
 
 ```bash
 # API not running
-$ hrafngrima health
+$ ultradex health
 ✗ API is unreachable: connection refused
 
-Make sure the Hrafngrima API is running:
+Make sure the Ultradex API is running:
   docker-compose up
 
 # Invalid contact
-$ hrafngrima contacts view invalid-id
+$ ultradex contacts view invalid-id
 API error (404): Contact not found
 
 # Configuration issue
-$ hrafngrima config reset
+$ ultradex config reset
 ✓ Configuration reset to defaults
 ```
 
@@ -306,7 +306,7 @@ For 200 contacts:
 1. Create `cmd/newcommand.go` with `*cobra.Command`
 2. Register in `cmd/root.go`
 3. Build: `make build`
-4. Test: `./bin/hrafngrima newcommand`
+4. Test: `./bin/ultradex newcommand`
 
 ### Adding API Endpoints
 
@@ -322,8 +322,8 @@ go test -v ./...
 
 # Integration (requires running API)
 make build
-./bin/hrafngrima health
-./bin/hrafngrima sync
+./bin/ultradex health
+./bin/ultradex sync
 ```
 
 ## Architecture Benefits
@@ -336,7 +336,7 @@ make build
 
 ## Complete Architecture
 
-Now Hrafngrima has three complete consumer layers:
+Now Ultradex has three complete consumer layers:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -347,7 +347,7 @@ Now Hrafngrima has three complete consumer layers:
 └────────────┴────────────┴───────────────┘
              ↓ (HTTP)
 ┌─────────────────────────────────────────┐
-│  Hrafngrima FastAPI (Internal)          │
+│  Ultradex FastAPI (Internal)          │
 │  - /api/v1/contacts/*                   │
 │  - /api/v1/analyze/*                    │
 │  - /health                              │
@@ -379,7 +379,7 @@ Now Hrafngrima has three complete consumer layers:
 
 ## Next Steps
 
-The complete Hrafngrima system is now production-ready:
+The complete Ultradex system is now production-ready:
 
 1. ✅ Phase 1: Python FastAPI Core + HTTP API
 2. ✅ Phase 2: Python SDK wrapper (future)
