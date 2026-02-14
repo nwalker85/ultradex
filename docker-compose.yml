@@ -18,6 +18,17 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: ultradex-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
@@ -25,6 +36,7 @@ services:
     container_name: ultradex-api
     environment:
       DATABASE_URL: postgresql://ultradex:ultradex_dev_password@postgres:5432/ultradex
+      REDIS_URL: redis://redis:6379
       DEX_API_KEY: ${DEX_API_KEY}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
     ports:
@@ -32,9 +44,30 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ultradex-worker
+    environment:
+      DATABASE_URL: postgresql://ultradex:ultradex_dev_password@postgres:5432/ultradex
+      REDIS_URL: redis://redis:6379
+      DEX_API_KEY: ${DEX_API_KEY}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: python -m arq core.workers.WorkerSettings
 
 volumes:
   ultradex_db:

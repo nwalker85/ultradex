@@ -1,6 +1,7 @@
 """Dependency injection for FastAPI"""
 
 from core import DexClient, ClaudeClient, ContactAnalyzer
+from arq.connections import ArqRedis
 
 
 # Will be populated by main.py during app startup
@@ -26,3 +27,8 @@ def get_claude_client() -> ClaudeClient:
 def get_analyzer() -> ContactAnalyzer:
     """Get contact analyzer from app state"""
     return _app_state["analyzer"]
+
+
+def get_redis() -> ArqRedis:
+    """Get Redis connection from app state"""
+    return _app_state["redis"]

@@ -1,7 +1,17 @@
 """Database connection and session management"""
 
 from sqlalchemy.orm import Session
-from .models import get_engine, get_session_factory, init_db, ContactDB, AnalysisRunDB
+from .models import (
+    get_engine,
+    get_session_factory,
+    init_db,
+    ContactDB,
+    AnalysisRunDB,
+    OperationDB,
+    OperationEventDB,
+    DelegationDB,
+    IdempotencyKeyDB,
+)
 
 class Database:
     def __init__(self, database_url: str):

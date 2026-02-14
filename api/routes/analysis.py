@@ -9,30 +9,45 @@ from core import (
     AnalysisRunDB,
     ContactAnalyzer,
     get_db,
+    OperationService,
 )
 from ..dependencies import get_analyzer
 
 router = APIRouter()
 
 
-@router.post("/analyze")
+@router.post("/analyze", deprecated=True)
 async def run_analysis(
     limit: Optional[int] = None,
     analyzer: ContactAnalyzer = Depends(get_analyzer),
     db: Session = Depends(get_db)
 ):
-    """Run AI analysis on contacts that need analysis"""
+    """
+    Run AI analysis on contacts that need analysis
+
+    ⚠️ **DEPRECATED** - Use POST /api/v2/contacts/commands/analyze instead.
+    This endpoint will be removed in 6 months (Aug 2026).
+    """
+    # Create operation
+    operation = OperationService.create_operation(db, command="analyze")
+    OperationService.start_operation(db, operation.id)
+
     try:
         result = await analyzer.analyze_contacts(db, limit=limit)
+        OperationService.complete_operation(db, operation.id, result)
+
         return {
             "status": "success",
+            "operation_id": operation.id,
             "analyzed": result.get("analyzed"),
             "neglected": result.get("neglected"),
             "tokens": result.get("tokens"),
             "cost": result.get("cost"),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "_warning": "This endpoint is deprecated. Use /api/v2/contacts/commands/analyze instead."
         }
     except Exception as e:
+        OperationService.fail_operation(db, operation.id, str(e))
         raise HTTPException(status_code=500, detail=f"Error running analysis: {str(e)}")
 
 

@@ -12,6 +12,7 @@ from core import (
     get_db,
     DexClient,
     ContactAnalyzer,
+    OperationService,
 )
 from ..dependencies import get_dex_client, get_analyzer
 
@@ -87,20 +88,35 @@ async def get_neglected_contacts(
         raise HTTPException(status_code=500, detail=f"Error fetching neglected contacts: {str(e)}")
 
 
-@router.post("/contacts/sync")
+@router.post("/contacts/sync", deprecated=True)
 async def sync_contacts(
     analyzer: ContactAnalyzer = Depends(get_analyzer),
     db: Session = Depends(get_db)
 ):
-    """Sync all contacts from Dex to local database"""
+    """
+    Sync all contacts from Dex to local database
+
+    ⚠️ **DEPRECATED** - Use POST /api/v2/contacts/commands/sync instead.
+    This endpoint will be removed in 6 months (Aug 2026).
+    """
+    # Create operation
+    operation = OperationService.create_operation(db, command="sync")
+    OperationService.start_operation(db, operation.id)
+
     try:
         count = await analyzer.sync_contacts(db)
+        result = {"contacts_synced": count}
+        OperationService.complete_operation(db, operation.id, result)
+
         return {
             "status": "success",
+            "operation_id": operation.id,
             "contacts_synced": count,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "_warning": "This endpoint is deprecated. Use /api/v2/contacts/commands/sync instead."
         }
     except Exception as e:
+        OperationService.fail_operation(db, operation.id, str(e))
         raise HTTPException(status_code=500, detail=f"Error syncing contacts: {str(e)}")
 
 
