@@ -1,0 +1,48 @@
+{
+  "name": "hrafngrima",
+  "description": "AI-powered networking relationship assistant MCP server",
+  "version": "1.0.0",
+  "type": "stdio",
+  "command": "python",
+  "args": [
+    "${HRAFNGRIMA_ROOT}/mcp/run_server.py"
+  ],
+  "env": {
+    "HRAFNGRIMA_API_URL": "http://localhost:8000",
+    "PYTHONUNBUFFERED": "1"
+  },
+  "tools": [
+    {
+      "name": "hrafngrima/sync_contacts",
+      "description": "Sync all contacts from Dex to the local database"
+    },
+    {
+      "name": "hrafngrima/analyze_contacts",
+      "description": "Run AI analysis on contacts to identify high-value and neglected relationships"
+    },
+    {
+      "name": "hrafngrima/get_contacts",
+      "description": "Get all cached contacts from the database"
+    },
+    {
+      "name": "hrafngrima/get_contact",
+      "description": "Get a specific contact by ID"
+    },
+    {
+      "name": "hrafngrima/get_neglected_contacts",
+      "description": "Get neglected high-value contacts (value ≥60, days ≥30)"
+    },
+    {
+      "name": "hrafngrima/write_note",
+      "description": "Write a note to a contact in Dex"
+    },
+    {
+      "name": "hrafngrima/get_analysis_stats",
+      "description": "Get aggregate statistics about contact analysis"
+    },
+    {
+      "name": "hrafngrima/get_analysis_history",
+      "description": "Get recent analysis runs"
+    }
+  ]
+}
