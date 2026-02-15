@@ -2,10 +2,12 @@
 
 from datetime import datetime
 from typing import Optional, List
+from enum import Enum
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, String, Float, DateTime, Integer, Text, create_engine
+from sqlalchemy import Column, String, Float, DateTime, Integer, Text, create_engine, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import uuid
 
 # Pydantic models (API/SDK)
 
@@ -59,6 +61,102 @@ class AnalysisRunResponse(BaseModel):
 # SQLAlchemy models (Database)
 
 Base = declarative_base()
+
+
+# Operation status enum
+class OperationStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+# Operation Pydantic models (API)
+class OperationResponse(BaseModel):
+    id: str
+    correlation_id: Optional[str] = None
+    command: str
+    status: str
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+
+class OperationDB(Base):
+    __tablename__ = "operations"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    correlation_id = Column(String(64), nullable=True)
+    command = Column(String(64), nullable=False)
+    status = Column(String(32), nullable=False, default=OperationStatus.PENDING)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+
+
+# Event sourcing
+class EventType(str, Enum):
+    OPERATION_ACCEPTED = "operation.accepted"
+    TASK_STARTED = "task.started"
+    TASK_PROGRESS = "task.progress"
+    TASK_COMPLETED = "task.completed"
+    TASK_FAILED = "task.failed"
+
+
+class OperationEvent(BaseModel):
+    id: int
+    operation_id: str
+    event_type: str
+    timestamp: datetime
+    payload: dict
+
+
+class OperationEventDB(Base):
+    __tablename__ = "operation_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    operation_id = Column(String(36), nullable=False)
+    event_type = Column(String(64), nullable=False)
+    timestamp = Column(DateTime, default=datetime.now, nullable=False)
+    payload = Column(JSON, nullable=True)
+
+
+# Governance & Authorization
+class DelegationDB(Base):
+    __tablename__ = "delegations"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    delegator = Column(String(64), nullable=False)
+    delegatee = Column(String(64), nullable=False)
+    allowed_actions = Column(JSON, nullable=False)  # ["analyze", "sync"]
+    allowed_resources = Column(JSON, nullable=False)  # ["*"] or ["resource-1"]
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class DelegationResponse(BaseModel):
+    id: str
+    delegator: str
+    delegatee: str
+    allowed_actions: list
+    allowed_resources: list
+    expires_at: datetime
+    revoked_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class IdempotencyKeyDB(Base):
+    __tablename__ = "idempotency_keys"
+
+    key = Column(String(255), primary_key=True)
+    operation_id = Column(String(36), nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
 
 
 class ContactDB(Base):
