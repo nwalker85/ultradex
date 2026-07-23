@@ -1,6 +1,12 @@
 """Dependency injection for FastAPI"""
 
-from core import DexClient, ClaudeClient, ContactAnalyzer
+from core import (
+    ClaudeClient,
+    ContactAnalyzer,
+    DexClient,
+    JobSearchTaskPublisher,
+    ReceiptIssuer,
+)
 from arq.connections import ArqRedis
 
 
@@ -32,3 +38,13 @@ def get_analyzer() -> ContactAnalyzer:
 def get_redis() -> ArqRedis:
     """Get Redis connection from app state"""
     return _app_state["redis"]
+
+
+def get_jobsearch_publisher() -> JobSearchTaskPublisher:
+    """Return the internal publisher; clients never receive NATS credentials."""
+    return _app_state["jobsearch_publisher"]
+
+
+def get_receipt_issuer() -> ReceiptIssuer:
+    """Return the configured accountability receipt issuer."""
+    return _app_state["receipt_issuer"]

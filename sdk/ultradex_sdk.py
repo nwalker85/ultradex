@@ -4,7 +4,12 @@ import asyncio
 import httpx
 from typing import Optional, Dict, Any
 from datetime import datetime
-from ravenhelm_contracts import ContractHandleV1
+import uuid
+from ravenhelm_contracts import (
+    ContractHandleV1,
+    CorrelationContextV1,
+    JobSearchCommandV1,
+)
 
 
 class UltradexClient:
@@ -102,6 +107,268 @@ class UltradexClient:
             headers=headers
         )
         return self._contract_handle_response(response)
+
+    @staticmethod
+    def _validate_jobsearch_parameters(
+        command: str,
+        parameters: Dict[str, object],
+        idempotency_key: str,
+    ) -> None:
+        """Validate with the shared contract without sending server-owned context."""
+        token = str(uuid.uuid4())
+        actor_id = "sdk-client"
+        context = CorrelationContextV1.from_dict(
+            {
+                "tenant_id": "private",
+                "operation_id": f"sdk-operation-{token}",
+                "contract_id": f"sdk-operation-{token}",
+                "correlation_id": f"sdk-correlation-{token}",
+                "causation_id": f"sdk-request-{token}",
+                "execution_id": f"sdk-execution-{token}",
+                "actor_id": actor_id,
+                "request_id": f"sdk-request-{token}",
+                "trace_id": f"sdk-trace-{token}",
+                "service_name": "ultradex-python-sdk",
+                "service_version": "1.1.0",
+                "deployment_sha": "sdk-client",
+                "environment": "local",
+                "contract_version": "jobsearch.v1",
+                "schema_version": "control-surface.v1",
+            }
+        )
+        JobSearchCommandV1.from_dict(
+            {
+                "command_id": f"sdk-command-{token}",
+                "command": command,
+                "actor_id": actor_id,
+                "idempotency_key": idempotency_key,
+                "context": context.to_dict(),
+                "parameters": parameters,
+            }
+        )
+
+    async def submit_jobsearch_command(
+        self,
+        command: str,
+        parameters: Dict[str, object],
+        *,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        """Submit one canonical job-search mutation through the official SDK."""
+        self._validate_jobsearch_parameters(
+            command,
+            parameters,
+            idempotency_key,
+        )
+        headers = self._get_headers().copy()
+        headers["Idempotency-Key"] = idempotency_key
+        if delegation_id:
+            headers["X-Delegation-Id"] = delegation_id
+        if correlation_id:
+            headers["X-Correlation-Id"] = correlation_id
+        response = await self.client.post(
+            f"/api/v2/job-search/commands/{command}",
+            json=parameters,
+            headers=headers,
+        )
+        return self._contract_handle_response(response)
+
+    async def submit_sources_ingest(
+        self,
+        *,
+        source_kind: str,
+        source_ref: str,
+        observed_at: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "sources.ingest",
+            {
+                "source_kind": source_kind,
+                "source_ref": source_ref,
+                "observed_at": observed_at,
+            },
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_opportunity_create(
+        self,
+        *,
+        employer: str,
+        title: str,
+        source_evidence_id: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "opportunities.create",
+            {
+                "employer": employer,
+                "title": title,
+                "source_evidence_id": source_evidence_id,
+            },
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_opportunity_score(
+        self,
+        *,
+        opportunity_id: str,
+        lens: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "opportunities.score",
+            {"opportunity_id": opportunity_id, "lens": lens},
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_application_transition(
+        self,
+        *,
+        application_id: str,
+        status: str,
+        occurred_at: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "applications.transition",
+            {
+                "application_id": application_id,
+                "status": status,
+                "occurred_at": occurred_at,
+            },
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_relationship_sync(
+        self,
+        *,
+        opportunity_id: str,
+        dex_contact_ref: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "relationships.sync",
+            {
+                "opportunity_id": opportunity_id,
+                "dex_contact_ref": dex_contact_ref,
+            },
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_outreach_prepare(
+        self,
+        *,
+        opportunity_id: str,
+        channel: str,
+        message_commitment: str,
+        idempotency_key: str,
+        relationship_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        parameters: Dict[str, object] = {
+            "opportunity_id": opportunity_id,
+            "channel": channel,
+            "message_commitment": message_commitment,
+        }
+        if relationship_id is not None:
+            parameters["relationship_id"] = relationship_id
+        return await self.submit_jobsearch_command(
+            "outreach.prepare",
+            parameters,
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_outreach_approve(
+        self,
+        *,
+        outreach_id: str,
+        message_commitment: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "outreach.approve",
+            {
+                "outreach_id": outreach_id,
+                "message_commitment": message_commitment,
+            },
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_outreach_send(
+        self,
+        *,
+        outreach_id: str,
+        approval_contract_id: str,
+        message_commitment: str,
+        channel: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "outreach.send",
+            {
+                "outreach_id": outreach_id,
+                "approval_contract_id": approval_contract_id,
+                "message_commitment": message_commitment,
+                "channel": channel,
+            },
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
+
+    async def submit_evidence_export(
+        self,
+        *,
+        subject_type: str,
+        subject_id: str,
+        profile: str,
+        idempotency_key: str,
+        delegation_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+    ) -> ContractHandleV1:
+        return await self.submit_jobsearch_command(
+            "evidence.export",
+            {
+                "subject_type": subject_type,
+                "subject_id": subject_id,
+                "profile": profile,
+            },
+            idempotency_key=idempotency_key,
+            delegation_id=delegation_id,
+            correlation_id=correlation_id,
+        )
 
     async def analyze_contacts(
         self,

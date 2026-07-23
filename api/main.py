@@ -72,7 +72,12 @@ app.add_middleware(
 
 # Import routes
 from .routes import contacts, analysis, health, operations
-from .routes.v2 import commands, operations as operations_v2, delegations
+from .routes.v2 import (
+    commands,
+    delegations,
+    jobsearch_commands,
+    operations as operations_v2,
+)
 from .graphql.schema import get_graphql_context, schema
 
 app.include_router(
@@ -94,6 +99,11 @@ app.include_router(
     dependencies=[Depends(require_read_principal)],
 )
 app.include_router(commands.router, prefix="/api/v2", tags=["commands"])
+app.include_router(
+    jobsearch_commands.router,
+    prefix="/api/v2",
+    tags=["job-search commands"],
+)
 app.include_router(
     operations_v2.router,
     prefix="/api/v2",

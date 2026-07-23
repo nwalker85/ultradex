@@ -17,6 +17,7 @@ from tests.conftest import FakeRedis
         ("/api/v1/operations", "GET"),
         ("/api/v2/operations", "GET"),
         ("/api/v2/contacts/commands/sync", "POST"),
+        ("/api/v2/job-search/commands/evidence.export", "POST"),
         ("/api/v2/delegations", "GET"),
     ],
 )
