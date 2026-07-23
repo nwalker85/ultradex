@@ -1,6 +1,7 @@
 """Health check endpoints"""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -22,7 +23,7 @@ async def health_check():
 async def health_check_db(db: Session = Depends(get_db)):
     """Check database connectivity"""
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {
             "status": "ok",
             "database": "connected",
@@ -39,7 +40,7 @@ async def health_check_db(db: Session = Depends(get_db)):
 async def readiness_check(db: Session = Depends(get_db)):
     """Kubernetes readiness probe"""
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {
             "ready": True,
             "timestamp": datetime.now().isoformat()

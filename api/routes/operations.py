@@ -1,6 +1,6 @@
 """Operation tracking endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -34,7 +34,7 @@ async def get_operation(
 
 @router.get("/operations", response_model=List[OperationResponse])
 async def list_operations(
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
     """List recent operations"""
@@ -65,11 +65,12 @@ async def list_operations(
 @router.get("/operations/{operation_id}/events", response_model=List[OperationEvent])
 async def get_operation_events(
     operation_id: str,
+    first: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
     """Get audit trail of events for an operation"""
     try:
-        events = EventProducer.get_events(db, operation_id)
+        events = EventProducer.get_events(db, operation_id, limit=first)
         return [
             OperationEvent(
                 id=event.id,

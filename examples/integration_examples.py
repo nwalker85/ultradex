@@ -8,7 +8,7 @@ import asyncio
 import logging
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

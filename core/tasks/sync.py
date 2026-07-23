@@ -82,3 +82,4 @@ async def sync_contacts_task(ctx, operation_id: str, parameters: dict):
 
     finally:
         db.close()
+        db_service.close()

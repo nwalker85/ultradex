@@ -16,7 +16,7 @@ pip install -e .
 
 ```python
 import asyncio
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 async def main():
     async with UltradexClient("http://localhost:8000") as client:
@@ -31,7 +31,7 @@ asyncio.run(main())
 ### Sync Usage (Simple Integration)
 
 ```python
-from sdk.ultradex_sdk import analyze_contacts
+from ultradex_sdk import analyze_contacts
 
 # Just call the function - handles polling internally
 result = analyze_contacts(limit=50)
@@ -336,7 +336,7 @@ async with UltradexClient("http://localhost:8000") as client:
 #!/usr/bin/env python3
 """Simple synchronous contact analysis"""
 
-from sdk.ultradex_sdk import analyze_contacts
+from ultradex_sdk import analyze_contacts
 
 result = analyze_contacts(limit=50)
 print(f"Status: {result['status']}")
@@ -350,7 +350,7 @@ print(f"Analyzed: {result['result']['analyzed']}")
 """Async analysis with event tracking"""
 
 import asyncio
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 async def main():
     async with UltradexClient("http://localhost:8000") as client:
@@ -376,7 +376,7 @@ asyncio.run(main())
 """Batch sync with concurrent requests"""
 
 import asyncio
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 async def main():
     async with UltradexClient("http://localhost:8000") as client:
@@ -400,7 +400,7 @@ asyncio.run(main())
 ```python
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 @pytest.mark.asyncio
 async def test_analyze_contacts():
@@ -454,7 +454,7 @@ httpx automatically manages connection pooling. For high-concurrency scenarios:
 
 ```python
 import httpx
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 # Create client with connection pool limits
 async with UltradexClient(

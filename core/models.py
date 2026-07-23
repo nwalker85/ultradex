@@ -5,8 +5,7 @@ from typing import Optional, List
 from enum import Enum
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, String, Float, DateTime, Integer, Text, create_engine, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 import uuid
 
 # Pydantic models (API/SDK)

@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 
 def get_config():
