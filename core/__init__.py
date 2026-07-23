@@ -55,6 +55,17 @@ from .gateway import (
 from .event_producer import EventProducer
 from .delegation_service import DelegationService
 from .idempotency_service import IdempotencyService
+from .jobsearch_commands import (
+    JobSearchCommandRequest,
+    JobSearchDispatchError,
+    JobSearchGatewayService,
+)
+from .jobsearch_nats import (
+    COMMAND_SUBJECTS,
+    JobSearchNATSPublisher,
+    JobSearchTaskPublisher,
+)
+from .jobsearch_receipts import ReceiptIssuer, verify_receipt_signature
 
 __all__ = [
     "ContactBase",
@@ -102,4 +113,12 @@ __all__ = [
     "ProjectionPage",
     "alembic_config",
     "run_jobsearch_migrations",
+    "JobSearchCommandRequest",
+    "JobSearchDispatchError",
+    "JobSearchGatewayService",
+    "COMMAND_SUBJECTS",
+    "JobSearchNATSPublisher",
+    "JobSearchTaskPublisher",
+    "ReceiptIssuer",
+    "verify_receipt_signature",
 ]

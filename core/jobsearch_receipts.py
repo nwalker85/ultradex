@@ -51,7 +51,8 @@ def _decode_b64url(value: str, label: str) -> bytes:
 
 def _whole_minute(value: datetime) -> str:
     if value.tzinfo is None:
-        raise ValueError("receipt timestamps must be timezone-aware")
+        # Legacy operation rows were created with local naive timestamps.
+        value = value.astimezone()
     utc = value.astimezone(timezone.utc).replace(second=0, microsecond=0)
     return utc.strftime("%Y-%m-%dT%H:%M:00.000Z")
 

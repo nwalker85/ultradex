@@ -12,3 +12,4 @@ strawberry-graphql[fastapi]==0.323.1
 ravenhelm-contracts==0.2.0
 alembic==1.18.5
 cryptography>=45.0,<47
+nats-py>=2.11,<3
