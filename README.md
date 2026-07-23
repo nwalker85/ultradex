@@ -81,11 +81,12 @@ async with UltradexClient(
 ```
 
 The existing `analyze_contacts()` and `sync_contacts()` SDK methods remain blocking
-submit-and-poll wrappers. Job-search convenience methods include
-`ingest_source()`, `create_opportunity()`, `score_opportunity()`,
-`transition_application()`, `sync_relationships()`, `prepare_outreach()`,
-`approve_outreach()`, `send_outreach()`, and `export_evidence()`. See
-[SDK_README.md](SDK_README.md).
+submit-and-poll wrappers. Job-search command methods include
+`submit_sources_ingest()`, `submit_opportunity_create()`,
+`submit_opportunity_score()`, `submit_application_transition()`,
+`submit_relationship_sync()`, `submit_outreach_prepare()`,
+`submit_outreach_approve()`, `submit_outreach_send()`, and
+`submit_evidence_export()`. See [SDK_README.md](SDK_README.md).
 
 ## Job-search runtime
 
