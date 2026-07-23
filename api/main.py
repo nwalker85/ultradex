@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from contextlib import asynccontextmanager
 from arq import create_pool
+from arq.connections import RedisSettings
+from strawberry.fastapi import GraphQLRouter
 
 from core import (
     init_database,
@@ -20,7 +22,6 @@ async def lifespan(app: FastAPI):
     """Initialize and cleanup resources"""
     # Startup
     database_url = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/ultradex")
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     dex_api_key = os.getenv("DEX_API_KEY")
     claude_api_key = os.getenv("CLAUDE_API_KEY")
 
@@ -35,9 +36,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize Redis
     redis = await create_pool(
-        host=redis_host,
-        port=redis_port,
-        database=0,
+        RedisSettings(host=redis_host, port=redis_port, database=0)
     )
 
     app_state = {
@@ -75,6 +74,7 @@ app.add_middleware(
 # Import routes
 from .routes import contacts, analysis, health, operations
 from .routes.v2 import commands, operations as operations_v2, delegations
+from .graphql.schema import get_graphql_context, schema
 
 app.include_router(contacts.router, prefix="/api/v1", tags=["contacts"])
 app.include_router(analysis.router, prefix="/api/v1", tags=["analysis"])
@@ -83,6 +83,11 @@ app.include_router(commands.router, prefix="/api/v2", tags=["commands"])
 app.include_router(operations_v2.router, prefix="/api/v2", tags=["operations"])
 app.include_router(delegations.router, prefix="/api/v2", tags=["delegations"])
 app.include_router(health.router, tags=["health"])
+app.include_router(
+    GraphQLRouter(schema, context_getter=get_graphql_context),
+    prefix="/api/graphql",
+    tags=["graphql"],
+)
 
 
 if __name__ == "__main__":

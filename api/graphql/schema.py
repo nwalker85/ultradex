@@ -1,15 +1,23 @@
 """GraphQL schema for Ultradex"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 import strawberry
+from fastapi import Depends
+from strawberry.scalars import JSON
 from sqlalchemy.orm import Session
 
 from core import (
     OperationDB,
     OperationEventDB,
     EventProducer,
+    get_db,
 )
+
+
+async def get_graphql_context(db: Session = Depends(get_db)) -> dict[str, Session]:
+    """Provide the read-only GraphQL projection session."""
+    return {"db": db}
 
 
 @strawberry.type
@@ -19,7 +27,18 @@ class OperationEventGQL:
     operation_id: str
     event_type: str
     timestamp: datetime
-    payload: Optional[strawberry.JSON] = None
+    payload: Optional[JSON] = None
+
+
+@strawberry.type
+class ProjectionFreshnessGQL:
+    """Freshness metadata for a read projection."""
+
+    source_event_id: str
+    source_event_position: str
+    projected_at: datetime
+    lag_ms: float
+    status: str
 
 
 @strawberry.type
@@ -32,8 +51,9 @@ class OperationGQL:
     created_at: datetime
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
-    result: Optional[strawberry.JSON]
+    result: Optional[JSON]
     error: Optional[str]
+    freshness: ProjectionFreshnessGQL
     events: Optional[List[OperationEventGQL]] = None
 
     @classmethod
@@ -50,6 +70,19 @@ class OperationGQL:
             )
             for e in events
         ]
+        if events:
+            source_event_id = str(events[-1].id)
+            source_event_position = str(events[-1].id)
+        else:
+            source_event_id = f"operation:{op.id}"
+            source_event_position = "legacy:operation"
+        freshness = ProjectionFreshnessGQL(
+            source_event_id=source_event_id,
+            source_event_position=source_event_position,
+            projected_at=datetime.now(timezone.utc),
+            lag_ms=0.0,
+            status="fresh",
+        )
         return cls(
             id=op.id,
             correlation_id=op.correlation_id,
@@ -60,6 +93,7 @@ class OperationGQL:
             completed_at=op.completed_at,
             result=op.result,
             error=op.error,
+            freshness=freshness,
             events=events_gql
         )
 
@@ -69,8 +103,9 @@ class Query:
     """GraphQL query root"""
 
     @strawberry.field
-    def operation(self, id: str, db: Session) -> Optional[OperationGQL]:
+    def operation(self, info: strawberry.Info, id: str) -> Optional[OperationGQL]:
         """Get a single operation by ID"""
+        db: Session = info.context["db"]
         op = db.query(OperationDB).filter(OperationDB.id == id).first()
         if not op:
             return None
@@ -79,11 +114,12 @@ class Query:
     @strawberry.field
     def operations(
         self,
+        info: strawberry.Info,
         limit: int = 10,
         status: Optional[str] = None,
-        db: Session = None
     ) -> List[OperationGQL]:
         """List operations with optional filtering"""
+        db: Session = info.context["db"]
         query = db.query(OperationDB).order_by(OperationDB.created_at.desc())
         if status:
             query = query.filter(OperationDB.status == status)
@@ -91,8 +127,13 @@ class Query:
         return [OperationGQL.from_db(db, op) for op in ops]
 
     @strawberry.field
-    def events(self, operation_id: str, db: Session) -> List[OperationEventGQL]:
+    def events(
+        self,
+        info: strawberry.Info,
+        operation_id: str,
+    ) -> List[OperationEventGQL]:
         """Get events for an operation"""
+        db: Session = info.context["db"]
         events = EventProducer.get_events(db, operation_id)
         return [
             OperationEventGQL(

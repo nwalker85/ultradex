@@ -8,3 +8,5 @@ python-dotenv==1.0.0
 anthropic==0.7.8
 arq==0.25.0
 redis==5.0.1
+strawberry-graphql[fastapi]==0.323.1
+ravenhelm-contracts==0.2.0

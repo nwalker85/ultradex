@@ -1,4 +1,6 @@
-"""Database connection and session management"""
+"""Database connection and session management."""
+
+from collections.abc import Generator
 
 from sqlalchemy.orm import Session
 from .models import (
@@ -40,8 +42,12 @@ def init_database(database_url: str):
     _db = Database(database_url)
     _db.init()
 
-def get_db() -> Database:
+def get_db() -> Generator[Session, None, None]:
     global _db
     if _db is None:
         raise RuntimeError("Database not initialized")
-    return _db
+    session = _db.get_session()
+    try:
+        yield session
+    finally:
+        session.close()

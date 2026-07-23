@@ -97,7 +97,7 @@
 
 ### Task 5: Verify and publish JS-U01
 
-- [x] `pytest -q` passes: 18 tests plus exactly one documented strict MCP XFAIL.
+- [x] `pytest -q` passes: 19 tests plus exactly one documented strict MCP XFAIL.
 - [x] `python -m compileall -q api core sdk tests` passes.
 - [x] `python -m build` produces an SDK-only wheel and sdist.
 - [x] Wheel inspection and a clean Python 3.13 consumer install confirm `ultradex_sdk` plus metadata, with no `mcp`, `api`, `core`, or CLI package.

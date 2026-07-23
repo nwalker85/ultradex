@@ -16,12 +16,14 @@ class CommandRequest:
         command: str,
         parameters: dict,
         actor_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
         idempotency_key: Optional[str] = None,
         correlation_id: Optional[str] = None,
     ):
         self.command = command
         self.parameters = parameters
         self.actor_id = actor_id
+        self.delegation_id = delegation_id
         self.idempotency_key = idempotency_key
         self.correlation_id = correlation_id
 
@@ -53,12 +55,17 @@ class GatewayService:
                 if operation:
                     return operation
 
-        # 2. Validate delegation (if provided)
-        if command.actor_id:
+        # 2. Validate delegated execution when an explicit delegation is provided.
+        # Actor identity is correlation context; it does not itself assert delegated
+        # authority. Authentication remains an API-layer responsibility.
+        if command.delegation_id:
+            if not command.actor_id:
+                raise PermissionError("Delegated execution requires actor_id")
             authorized = DelegationService.validate_delegation(
                 db,
                 command.actor_id,
-                command.command
+                command.command,
+                command.delegation_id,
             )
             if not authorized:
                 raise PermissionError(
@@ -87,7 +94,8 @@ class GatewayService:
             operation.id,
             {
                 "command": command.command,
-                "actor_id": command.actor_id
+                "actor_id": command.actor_id,
+                "delegation_id": command.delegation_id,
             }
         )
 
