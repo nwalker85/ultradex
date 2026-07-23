@@ -67,6 +67,7 @@ from .jobsearch_nats import (
     UnavailableJobSearchPublisher,
 )
 from .jobsearch_receipts import ReceiptIssuer, verify_receipt_signature
+from .jobsearch_outbox import JobSearchOutboxDispatcher
 from .jobsearch_executors import (
     DomainRefusal,
     EvidenceIngestResult,
@@ -137,6 +138,7 @@ __all__ = [
     "UnavailableJobSearchPublisher",
     "ReceiptIssuer",
     "verify_receipt_signature",
+    "JobSearchOutboxDispatcher",
     "DomainRefusal",
     "EvidenceIngestResult",
     "JobSearchExecutionOutcome",

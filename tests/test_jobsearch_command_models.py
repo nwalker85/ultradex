@@ -50,6 +50,7 @@ def test_command_model_preserves_canonical_private_envelope(db_session):
             "source_evidence_id": "evidence-01",
         },
         created_at=NOW,
+        dispatched_at=None,
     )
     db_session.add(row)
     db_session.commit()
@@ -58,6 +59,7 @@ def test_command_model_preserves_canonical_private_envelope(db_session):
     assert stored is not None
     assert stored.command_id == "command-01"
     assert stored.parameters["source_evidence_id"] == "evidence-01"
+    assert stored.dispatched_at is None
 
 
 def test_one_command_and_one_terminal_receipt_per_operation(db_session):

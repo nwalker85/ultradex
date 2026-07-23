@@ -325,6 +325,7 @@ class JobSearchGatewayService:
                     context=command.context.to_dict(),
                     parameters=dict(command.parameters),
                     created_at=_utcnow(),
+                    dispatched_at=None,
                 )
             )
             EventProducer.emit(
@@ -365,11 +366,15 @@ class JobSearchGatewayService:
 
         try:
             await self._publisher.publish_lifecycle(accepted)
-            self._mark_event_published(
+            self._best_effort_mark_event_published(
                 db,
                 accepted.control_surface_event.id,
             )
             await self._publisher.publish_command(command)
+            self._best_effort_mark_command_dispatched(
+                db,
+                operation_id,
+            )
         except Exception as error:
             terminal = self._record_dispatch_failure(db, command)
             try:
@@ -380,7 +385,7 @@ class JobSearchGatewayService:
                 )
             except Exception:
                 # The durable unpublished row is the retry/outbox boundary.
-                pass
+                db.rollback()
             raise JobSearchDispatchError(
                 _operation_response(db, operation_id)
             ) from error
@@ -393,6 +398,35 @@ class JobSearchGatewayService:
             raise RuntimeError("Published lifecycle event disappeared")
         row.published_at = _utcnow()
         db.commit()
+
+    @classmethod
+    def _best_effort_mark_event_published(
+        cls,
+        db: Session,
+        event_id: str,
+    ) -> None:
+        try:
+            cls._mark_event_published(db, event_id)
+        except Exception:
+            # JetStream already acknowledged the event. Leaving the outbox row
+            # unpublished makes recovery replay it with the same Nats-Msg-Id.
+            db.rollback()
+
+    @staticmethod
+    def _best_effort_mark_command_dispatched(
+        db: Session,
+        operation_id: str,
+    ) -> None:
+        try:
+            row = db.get(JobSearchCommandDB, operation_id)
+            if row is None:
+                raise RuntimeError("Dispatched command disappeared")
+            row.dispatched_at = _utcnow()
+            db.commit()
+        except Exception:
+            # A publish ACK is authoritative. The durable outbox may replay this
+            # command, and JetStream/executor idempotency makes that safe.
+            db.rollback()
 
     def _record_dispatch_failure(
         self,

@@ -10,6 +10,7 @@ from core.jobsearch_models import (
     JOBSEARCH_PROJECTION_TABLES,
     JOBSEARCH_PROJECTION_TYPES,
     ApplicationProjectionDB,
+    JobSearchCommandDB,
     OpportunityProjectionDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
@@ -78,6 +79,18 @@ def test_projection_checkpoint_requires_explicit_measured_lag(tmp_path):
 
     assert model_column.default is None
     assert migrated_column["default"] is None
+
+
+def test_command_dispatch_timestamp_is_nullable_outbox_state(tmp_path):
+    model_column = JobSearchCommandDB.__table__.c.dispatched_at
+    migrated_column = _migrated_column(
+        tmp_path,
+        "jobsearch_commands",
+        "dispatched_at",
+    )
+
+    assert model_column.nullable is True
+    assert migrated_column["nullable"] is True
 
 
 def test_opportunity_fit_explanation_uses_contract_maximum(tmp_path):

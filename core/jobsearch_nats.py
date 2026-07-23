@@ -7,7 +7,7 @@ import re
 from typing import Protocol
 
 import nats
-from nats.js.errors import NotFoundError
+from nats.js.errors import APIError, NotFoundError
 from ravenhelm_contracts import JobSearchCommandV1, JobSearchEventV1
 from ravenhelm_contracts.jobsearch_v1 import COMMAND_NAMES_V1
 
@@ -15,6 +15,10 @@ from ravenhelm_contracts.jobsearch_v1 import COMMAND_NAMES_V1
 STREAM_NAME = "ULTRADEX_JOBSEARCH_V1"
 COMMAND_SUBJECT_PREFIX = "ultradex.jobsearch.commands.v1"
 EVENT_SUBJECT_PREFIX = "ultradex.jobsearch.events.v1"
+REQUIRED_STREAM_SUBJECTS = (
+    f"{COMMAND_SUBJECT_PREFIX}.*",
+    f"{EVENT_SUBJECT_PREFIX}.*",
+)
 COMMAND_SUBJECTS: dict[str, str] = {
     command: f"{COMMAND_SUBJECT_PREFIX}.{command.replace('.', '-')}"
     for command in sorted(COMMAND_NAMES_V1)
@@ -50,6 +54,38 @@ class UnavailableJobSearchPublisher:
         return None
 
 
+async def ensure_jobsearch_stream(jetstream) -> None:
+    """Create or reconcile the shared stream under concurrent service startup."""
+
+    try:
+        info = await jetstream.stream_info(STREAM_NAME)
+    except NotFoundError:
+        try:
+            await jetstream.add_stream(
+                name=STREAM_NAME,
+                subjects=list(REQUIRED_STREAM_SUBJECTS),
+                storage="file",
+            )
+            return
+        except APIError as create_error:
+            # The API and worker can discover a missing stream simultaneously.
+            # Re-read after a losing create race; preserve the create error when
+            # no competing service actually established the stream.
+            try:
+                info = await jetstream.stream_info(STREAM_NAME)
+            except NotFoundError:
+                raise create_error
+
+    configured = set(info.config.subjects or ())
+    required = set(REQUIRED_STREAM_SUBJECTS)
+    if not required.issubset(configured):
+        await jetstream.update_stream(
+            config=info.config.evolve(
+                subjects=sorted(configured | required),
+            )
+        )
+
+
 class JobSearchNATSPublisher:
     """Publish validated contracts to a bounded JetStream subject catalog."""
 
@@ -67,17 +103,7 @@ class JobSearchNATSPublisher:
             max_reconnect_attempts=-1,
         )
         self._js = self._nc.jetstream()
-        try:
-            await self._js.stream_info(STREAM_NAME)
-        except NotFoundError:
-            await self._js.add_stream(
-                name=STREAM_NAME,
-                subjects=[
-                    f"{COMMAND_SUBJECT_PREFIX}.*",
-                    f"{EVENT_SUBJECT_PREFIX}.*",
-                ],
-                storage="file",
-            )
+        await ensure_jobsearch_stream(self._js)
 
     async def close(self) -> None:
         if self._nc is not None:

@@ -29,6 +29,7 @@ def upgrade() -> None:
         sa.Column("context", sa.JSON(), nullable=False),
         sa.Column("parameters", sa.JSON(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("dispatched_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("operation_id"),
         sa.UniqueConstraint("command_id"),
     )
@@ -36,6 +37,12 @@ def upgrade() -> None:
         "ix_jobsearch_commands_command_name",
         "jobsearch_commands",
         ["command_name"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_jobsearch_commands_dispatched_at",
+        "jobsearch_commands",
+        ["dispatched_at"],
         unique=False,
     )
 
@@ -192,6 +199,10 @@ def downgrade() -> None:
     )
     op.drop_table("jobsearch_evidence_refs")
 
+    op.drop_index(
+        "ix_jobsearch_commands_dispatched_at",
+        table_name="jobsearch_commands",
+    )
     op.drop_index(
         "ix_jobsearch_commands_command_name",
         table_name="jobsearch_commands",

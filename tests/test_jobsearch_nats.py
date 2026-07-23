@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
+from nats.js.errors import APIError, NotFoundError
 from ravenhelm_contracts import CorrelationContextV1, JobSearchCommandV1
 
 from core.jobsearch_nats import (
     COMMAND_SUBJECTS,
+    EVENT_SUBJECT_PREFIX,
     JobSearchNATSPublisher,
+    REQUIRED_STREAM_SUBJECTS,
+    STREAM_NAME,
+    ensure_jobsearch_stream,
     lifecycle_subject,
 )
 
@@ -18,6 +24,44 @@ class FakeJetStream:
 
     async def publish(self, subject, payload, headers=None):
         self.published.append((subject, payload, headers))
+
+
+class FakeStreamConfig:
+    def __init__(self, subjects):
+        self.subjects = subjects
+
+    def evolve(self, **changes):
+        return FakeStreamConfig(changes.get("subjects", self.subjects))
+
+
+class FakeStreamManager:
+    def __init__(self, *, subjects=None, missing_reads=0, create_race=False):
+        self.info = SimpleNamespace(config=FakeStreamConfig(subjects or []))
+        self.missing_reads = missing_reads
+        self.create_race = create_race
+        self.added = []
+        self.updated = []
+
+    async def stream_info(self, name):
+        assert name == STREAM_NAME
+        if self.missing_reads:
+            self.missing_reads -= 1
+            raise NotFoundError
+        return self.info
+
+    async def add_stream(self, **config):
+        self.added.append(config)
+        if self.create_race:
+            raise APIError(code=400, err_code=10058, description="stream exists")
+        self.info = SimpleNamespace(
+            config=FakeStreamConfig(config["subjects"]),
+        )
+        return self.info
+
+    async def update_stream(self, *, config):
+        self.updated.append(config)
+        self.info = SimpleNamespace(config=config)
+        return self.info
 
 
 def _command():
@@ -84,3 +128,39 @@ async def test_jetstream_publisher_uses_canonical_payload_and_dedup_header():
     assert subject == COMMAND_SUBJECTS["evidence.export"]
     assert json.loads(payload) == command.to_dict()
     assert headers == {"Nats-Msg-Id": "export-01"}
+
+
+@pytest.mark.asyncio
+async def test_stream_setup_reconciles_missing_required_subjects():
+    manager = FakeStreamManager(subjects=[f"{EVENT_SUBJECT_PREFIX}.*"])
+
+    await ensure_jobsearch_stream(manager)
+
+    assert manager.added == []
+    assert len(manager.updated) == 1
+    assert set(manager.updated[0].subjects) == set(REQUIRED_STREAM_SUBJECTS)
+
+
+@pytest.mark.asyncio
+async def test_stream_setup_tolerates_a_concurrent_create_race():
+    manager = FakeStreamManager(
+        subjects=list(REQUIRED_STREAM_SUBJECTS),
+        missing_reads=1,
+        create_race=True,
+    )
+
+    await ensure_jobsearch_stream(manager)
+
+    assert len(manager.added) == 1
+    assert manager.updated == []
+
+
+@pytest.mark.asyncio
+async def test_stream_setup_preserves_a_non_race_create_failure():
+    manager = FakeStreamManager(
+        missing_reads=2,
+        create_race=True,
+    )
+
+    with pytest.raises(APIError, match="stream exists"):
+        await ensure_jobsearch_stream(manager)

@@ -6,6 +6,7 @@ import pytest
 from ravenhelm_contracts import JobSearchEventV1
 from ravenhelm_contracts.accountability_v1 import ExecutionReceiptV1
 from ravenhelm_contracts.jobsearch_v1 import COMMAND_NAMES_V1
+from sqlalchemy.orm import Session
 
 from core.jobsearch_commands import (
     JobSearchCommandRequest,
@@ -96,6 +97,27 @@ class RetrySource:
     async def ingest(self, command):
         self.calls += 1
         raise RetryableCommandError("source_timeout")
+
+
+class TransactionObserverSource:
+    def __init__(self, bind):
+        self._bind = bind
+        self.visible_operation_status = None
+
+    async def ingest(self, command):
+        with Session(bind=self._bind) as observer:
+            self.visible_operation_status = observer.get(
+                OperationDB,
+                command.context.operation_id,
+            ).status
+        return EvidenceIngestResult(
+            evidence_id="evidence-observer-01",
+            source_kind=command.parameters["source_kind"],
+            source_ref=command.parameters["source_ref"],
+            observed_at=command.parameters["observed_at"],
+            commitment=COMMITMENT,
+            redacted_summary="Public role metadata reviewed.",
+        )
 
 
 async def _accepted(
@@ -220,6 +242,35 @@ async def test_sources_ingest_validates_and_persists_opaque_evidence(
     row = db_session.get(JobSearchEvidenceReferenceDB, "evidence-source-01")
     assert row.redacted_summary == "Public role metadata reviewed."
     assert "raw" not in str(row.__dict__).lower()
+
+
+@pytest.mark.asyncio
+async def test_executor_does_not_release_operation_transaction_before_side_effect(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+):
+    command = await _accepted(
+        db_session,
+        fake_jobsearch_publisher,
+        receipt_issuer,
+        "sources.ingest",
+        {
+            "source_kind": "web",
+            "source_ref": "web-source-01",
+            "observed_at": "2026-07-23T14:00:00Z",
+        },
+        "transaction-observer",
+    )
+    source = TransactionObserverSource(db_session.get_bind())
+
+    await JobSearchExecutor(
+        db_session,
+        receipt_issuer,
+        source_adapter=source,
+    ).execute(command)
+
+    assert source.visible_operation_status == "pending"
 
 
 @pytest.mark.asyncio

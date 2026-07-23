@@ -19,6 +19,7 @@ from .jobsearch_nats import (
     JobSearchNATSPublisher,
     JobSearchTaskPublisher,
 )
+from .jobsearch_outbox import JobSearchOutboxDispatcher
 from .jobsearch_receipts import ReceiptIssuer
 
 
@@ -71,12 +72,14 @@ class JobSearchPullConsumer:
         *,
         url: str,
         worker: JobSearchWorker,
+        outbox: JobSearchOutboxDispatcher | None = None,
         durable: str = "ultradex-jobsearch-v1",
         batch_size: int = 10,
         fetch_timeout_seconds: float = 1.0,
     ) -> None:
         self._url = url
         self._worker = worker
+        self._outbox = outbox
         self._durable = durable
         self._batch_size = batch_size
         self._fetch_timeout_seconds = fetch_timeout_seconds
@@ -112,6 +115,8 @@ class JobSearchPullConsumer:
 
     async def run_forever(self) -> None:
         while True:
+            if self._outbox is not None:
+                await self._outbox.dispatch_pending()
             await self.run_once()
 
     async def close(self) -> None:
@@ -139,7 +144,12 @@ async def run_jobsearch_worker() -> None:
         await publisher.connect()
         executor = JobSearchExecutor(session, ReceiptIssuer.from_env())
         worker = JobSearchWorker(executor, publisher)
-        consumer = JobSearchPullConsumer(url=nats_url, worker=worker)
+        outbox = JobSearchOutboxDispatcher(session, publisher)
+        consumer = JobSearchPullConsumer(
+            url=nats_url,
+            worker=worker,
+            outbox=outbox,
+        )
         await consumer.connect()
         await consumer.run_forever()
     finally:

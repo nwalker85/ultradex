@@ -191,6 +191,46 @@ class JobSearchExecutor:
     def command_names(self) -> tuple[str, ...]:
         return tuple(sorted(self._handlers))
 
+    def _locked_row(self, model, row_id: str):
+        primary_key = model.__mapper__.primary_key[0]
+        return (
+            self._db.query(model)
+            .filter(primary_key == row_id)
+            .populate_existing()
+            .with_for_update()
+            .one_or_none()
+        )
+
+    def _existing_outcome(
+        self,
+        command: JobSearchCommandV1,
+    ) -> JobSearchExecutionOutcome | None:
+        existing = (
+            self._db.query(JobSearchExecutionReceiptDB)
+            .filter_by(operation_id=command.context.operation_id)
+            .one_or_none()
+        )
+        if existing is None:
+            return None
+        event_row = self._db.get(
+            JobSearchLifecycleEventDB,
+            existing.event_id,
+        )
+        if event_row is None:
+            raise RuntimeError("terminal receipt has no lifecycle event")
+        operation = self._db.get(
+            OperationDB,
+            command.context.operation_id,
+        )
+        if operation is None:
+            raise RuntimeError("terminal receipt has no operation")
+        return JobSearchExecutionOutcome(
+            event=JobSearchEventV1.from_dict(event_row.payload),
+            receipt=ExecutionReceiptV1.from_dict(existing.payload),
+            result=dict(operation.result or {}),
+            replayed=True,
+        )
+
     async def execute(
         self,
         value: JobSearchCommandV1 | dict[str, object],
@@ -209,32 +249,15 @@ class JobSearchExecutor:
         if accepted is None or accepted.command_id != command.command_id:
             raise ValueError("task has no matching durable accepted command")
 
-        existing = (
-            self._db.query(JobSearchExecutionReceiptDB)
-            .filter_by(operation_id=command.context.operation_id)
-            .one_or_none()
+        operation = self._locked_row(
+            OperationDB,
+            command.context.operation_id,
         )
-        if existing is not None:
-            event_row = self._db.get(
-                JobSearchLifecycleEventDB,
-                existing.event_id,
-            )
-            if event_row is None:
-                raise RuntimeError("terminal receipt has no lifecycle event")
-            operation = self._db.get(
-                OperationDB,
-                command.context.operation_id,
-            )
-            return JobSearchExecutionOutcome(
-                event=JobSearchEventV1.from_dict(event_row.payload),
-                receipt=ExecutionReceiptV1.from_dict(existing.payload),
-                result=dict(operation.result or {}),
-                replayed=True,
-            )
-
-        operation = self._db.get(OperationDB, command.context.operation_id)
         if operation is None:
             raise ValueError("task operation does not exist")
+        existing = self._existing_outcome(command)
+        if existing is not None:
+            return existing
         if operation.status == OperationStatus.PENDING:
             OperationService.start_operation(
                 self._db,
@@ -248,12 +271,10 @@ class JobSearchExecutor:
                 {"task": command.command},
                 commit=False,
             )
-            self._db.commit()
 
         try:
             result = await self._handlers[command.command](command)
         except DomainRefusal as refusal:
-            self._db.rollback()
             return self._finalize_safely(
                 command,
                 status="refused",
@@ -333,9 +354,15 @@ class JobSearchExecutor:
         handler_result: HandlerResult | None = None,
     ) -> JobSearchExecutionOutcome:
         now = self._now()
-        operation = self._db.get(OperationDB, command.context.operation_id)
+        operation = self._locked_row(
+            OperationDB,
+            command.context.operation_id,
+        )
         if operation is None:  # pragma: no cover - checked before execution
             raise RuntimeError("operation disappeared during execution")
+        existing = self._existing_outcome(command)
+        if existing is not None:
+            return existing
         if status == "succeeded":
             operation = OperationService.complete_operation(
                 self._db,
@@ -603,7 +630,7 @@ class JobSearchExecutor:
         command: JobSearchCommandV1,
     ) -> HandlerResult:
         opportunity_id = str(command.parameters["opportunity_id"])
-        row = self._db.get(OpportunityProjectionDB, opportunity_id)
+        row = self._locked_row(OpportunityProjectionDB, opportunity_id)
         if row is None:
             raise DomainRefusal("opportunity_not_found")
         if self._scorer is None:
@@ -643,7 +670,7 @@ class JobSearchExecutor:
         command: JobSearchCommandV1,
     ) -> HandlerResult:
         application_id = str(command.parameters["application_id"])
-        row = self._db.get(ApplicationProjectionDB, application_id)
+        row = self._locked_row(ApplicationProjectionDB, application_id)
         if row is None:
             raise DomainRefusal("application_not_found")
         target = str(command.parameters["status"])
@@ -769,7 +796,7 @@ class JobSearchExecutor:
         command: JobSearchCommandV1,
     ) -> HandlerResult:
         outreach_id = str(command.parameters["outreach_id"])
-        row = self._db.get(OutreachProjectionDB, outreach_id)
+        row = self._locked_row(OutreachProjectionDB, outreach_id)
         if row is None:
             raise DomainRefusal("outreach_not_found")
         if row.state != "pending_approval":
@@ -812,10 +839,10 @@ class JobSearchExecutor:
     ) -> HandlerResult:
         outreach_id = str(command.parameters["outreach_id"])
         approval_id = str(command.parameters["approval_contract_id"])
-        row = self._db.get(OutreachProjectionDB, outreach_id)
+        row = self._locked_row(OutreachProjectionDB, outreach_id)
         if row is None:
             raise DomainRefusal("outreach_not_found")
-        approval = self._db.get(JobSearchApprovalDB, approval_id)
+        approval = self._locked_row(JobSearchApprovalDB, approval_id)
         if approval is None:
             raise DomainRefusal("approval_not_found", receipt_reason="policy_denied")
         if row.approval_contract_ref != approval_id:

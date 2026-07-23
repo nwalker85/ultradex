@@ -150,6 +150,7 @@ class JobSearchCommandDB(Base):
     context = Column(JSON, nullable=False)
     parameters = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    dispatched_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class JobSearchEvidenceReferenceDB(Base):

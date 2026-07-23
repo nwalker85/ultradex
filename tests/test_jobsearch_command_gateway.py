@@ -68,6 +68,7 @@ async def test_gateway_persists_and_publishes_one_canonical_command(
     assert published.parameters == PARAMETERS
 
     row = db_session.get(JobSearchCommandDB, operation.id)
+    assert row.dispatched_at is not None
     validated = JobSearchCommandV1.from_dict(
         {
             "command_id": row.command_id,

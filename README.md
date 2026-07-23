@@ -93,12 +93,17 @@ submit-and-poll wrappers. Job-search command methods include
 NATS JetStream carries durable command and lifecycle facts on the bounded subjects
 `ultradex.jobsearch.commands.v1.*` and `ultradex.jobsearch.events.v1.*`. The
 `jobsearch-worker` is a separate durable pull consumer; the existing Redis/ARQ
-`worker` remains unchanged for contact-analysis compatibility.
+`worker` remains unchanged for contact-analysis compatibility. Accepted commands
+and unpublished lifecycle events form a database-backed outbox. The worker drains
+that outbox before consuming tasks, so a process crash between the database commit
+and JetStream publication is recovered with the original NATS deduplication ID.
 
 Every terminal job-search outcome commits its lifecycle event, projection
 checkpoint, and signed `accountability.v1` execution receipt in one database
-transaction before the worker acknowledges the message. Receipts contain opaque or
-pairwise references and HMAC commitments, not private source content.
+transaction before the worker acknowledges the message. Execution holds the
+operation transaction through the domain mutation, serializing duplicate deliveries
+before they can repeat a side effect. Receipts contain opaque or pairwise references
+and HMAC commitments, not private source content.
 
 The command runtime is intentionally fail-closed. Gmail, LinkedIn, Dex, scoring,
 relationship-resolution, and message-delivery adapters remain unbound until their
@@ -149,16 +154,14 @@ Node processes, if added, must use PM2 per Ravenhelm standards.
 
 ## Delivery sequence
 
-The baseline currently establishes the contract boundary, packageable Python SDK,
-GraphQL read surface, idempotent command compatibility, and hermetic tests. Subsequent
-bounded units add:
+The implemented foundation establishes the contract boundary, packageable Python
+SDK, GraphQL read surface, governed job-search commands, durable execution, and
+hermetic tests. Subsequent bounded units add:
 
-1. job-search persistence and migrations;
-2. governed opportunity, application, relationship, and outreach commands;
-3. Gmail, LinkedIn, Dex, GitHub, and web ingestion adapters;
-4. Go SDK and CLI generated from the same contracts;
-5. MCP tools that call the official SDK only;
-6. canonical telemetry, audit correlation, and computed blind-spot/broken-binding
+1. Gmail, LinkedIn-safe, Dex, GitHub, and web ingestion adapters;
+2. Go SDK and CLI generated from the same contracts;
+3. MCP tools that call the official SDK only;
+4. canonical telemetry, audit correlation, and computed blind-spot/broken-binding
    registers.
 
 The existing top-level `mcp` package has a known import collision. Its repair is
