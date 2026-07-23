@@ -6,6 +6,7 @@ from sqlalchemy import Integer, String, create_engine, inspect
 from core.database import Database
 from core.jobsearch_migrations import alembic_config, run_jobsearch_migrations
 from core.jobsearch_models import (
+    JOBSEARCH_COMMAND_TABLES,
     JOBSEARCH_PROJECTION_TABLES,
     JOBSEARCH_PROJECTION_TYPES,
     ApplicationProjectionDB,
@@ -131,7 +132,11 @@ def test_upgrade_head_creates_only_versioned_jobsearch_schema(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
     run_jobsearch_migrations(str(engine.url))
     tables = set(inspect(engine).get_table_names())
-    assert tables == {"alembic_version"} | set(JOBSEARCH_PROJECTION_TABLES)
+    assert tables == (
+        {"alembic_version"}
+        | set(JOBSEARCH_PROJECTION_TABLES)
+        | set(JOBSEARCH_COMMAND_TABLES)
+    )
 
 
 def test_upgrade_is_idempotent_and_downgrade_removes_jobsearch_tables(tmp_path):
@@ -142,7 +147,7 @@ def test_upgrade_is_idempotent_and_downgrade_removes_jobsearch_tables(tmp_path):
     command.downgrade(cfg, "base")
     assert not (
         set(inspect(engine).get_table_names())
-        & set(JOBSEARCH_PROJECTION_TABLES)
+        & (set(JOBSEARCH_PROJECTION_TABLES) | set(JOBSEARCH_COMMAND_TABLES))
     )
 
 
@@ -154,6 +159,7 @@ def test_database_init_preserves_legacy_tables_and_applies_jobsearch_revision(
     tables = set(inspect(database.engine).get_table_names())
     assert {"operations", "contacts"} <= tables
     assert set(JOBSEARCH_PROJECTION_TABLES) <= tables
+    assert set(JOBSEARCH_COMMAND_TABLES) <= tables
 
 
 def test_database_init_uses_one_connection_for_in_memory_startup():
@@ -164,3 +170,4 @@ def test_database_init_uses_one_connection_for_in_memory_startup():
     tables = set(inspect(database.engine).get_table_names())
     assert {"operations", "contacts"} <= tables
     assert set(JOBSEARCH_PROJECTION_TABLES) <= tables
+    assert set(JOBSEARCH_COMMAND_TABLES) <= tables

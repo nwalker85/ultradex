@@ -68,6 +68,7 @@ class OperationStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    REFUSED = "refused"
 
 
 # Operation Pydantic models (API)
