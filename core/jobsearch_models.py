@@ -45,7 +45,7 @@ class OpportunityProjectionDB(Base):
     risk_flags = Column(JSON, nullable=False, default=list)
     evidence_refs = Column(JSON, nullable=False, default=list)
     source_event_id = Column(String(128), nullable=False)
-    source_event_position = Column(BigInteger, nullable=False)
+    source_event_position = Column(String(128), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(
@@ -64,10 +64,10 @@ class ApplicationProjectionDB(Base):
     state = Column(String(32), nullable=False, index=True)
     stage_history = Column(JSON, nullable=False, default=list)
     artifact_refs = Column(JSON, nullable=False, default=list)
-    next_action = Column(String(255), nullable=True)
+    next_action = Column(String(500), nullable=True)
     next_action_deadline = Column(DateTime(timezone=True), nullable=True)
     source_event_id = Column(String(128), nullable=False)
-    source_event_position = Column(BigInteger, nullable=False)
+    source_event_position = Column(String(128), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(
@@ -88,7 +88,7 @@ class RelationshipProjectionDB(Base):
     relevance_reason = Column(String(500), nullable=True)
     relevance_signals = Column(JSON, nullable=False, default=list)
     source_event_id = Column(String(128), nullable=False)
-    source_event_position = Column(BigInteger, nullable=False)
+    source_event_position = Column(String(128), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(
@@ -111,7 +111,7 @@ class OutreachProjectionDB(Base):
     approval_contract_ref = Column(String(255), nullable=True)
     sent_evidence_ref = Column(String(255), nullable=True)
     source_event_id = Column(String(128), nullable=False)
-    source_event_position = Column(BigInteger, nullable=False)
+    source_event_position = Column(String(128), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(
@@ -127,7 +127,7 @@ class ProjectionCheckpointDB(Base):
 
     projection_type = Column(String(32), primary_key=True)
     source_event_id = Column(String(128), nullable=False)
-    source_event_position = Column(BigInteger, nullable=False)
+    source_event_position = Column(String(128), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     lag_ms = Column(BigInteger, nullable=False)
     status = Column(String(32), nullable=False, index=True)

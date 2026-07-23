@@ -1,11 +1,14 @@
+import pytest
 from alembic import command
-from sqlalchemy import String, create_engine, inspect
+from sqlalchemy import Integer, String, create_engine, inspect
 
 from core.database import Database
 from core.jobsearch_migrations import alembic_config, run_jobsearch_migrations
 from core.jobsearch_models import (
     JOBSEARCH_PROJECTION_TABLES,
+    ApplicationProjectionDB,
     OpportunityProjectionDB,
+    OutreachProjectionDB,
     ProjectionCheckpointDB,
     RelationshipProjectionDB,
 )
@@ -16,6 +19,50 @@ def _migrated_column(tmp_path, table_name, column_name):
     run_jobsearch_migrations(str(engine.url))
     columns = inspect(engine).get_columns(table_name)
     return next(column for column in columns if column["name"] == column_name)
+
+
+@pytest.mark.parametrize(
+    ("model", "table_name"),
+    [
+        (OpportunityProjectionDB, "jobsearch_opportunities"),
+        (ApplicationProjectionDB, "jobsearch_applications"),
+        (RelationshipProjectionDB, "jobsearch_relationships"),
+        (OutreachProjectionDB, "jobsearch_outreach"),
+        (ProjectionCheckpointDB, "jobsearch_projection_checkpoints"),
+    ],
+)
+def test_source_event_position_uses_opaque_bounded_string(
+    tmp_path,
+    model,
+    table_name,
+):
+    model_type = model.__table__.c.source_event_position.type
+    migrated_type = _migrated_column(
+        tmp_path,
+        table_name,
+        "source_event_position",
+    )["type"]
+
+    assert isinstance(model_type, String)
+    assert model_type.length == 128
+    assert not isinstance(model_type, Integer)
+    assert isinstance(migrated_type, String)
+    assert migrated_type.length == 128
+    assert not isinstance(migrated_type, Integer)
+
+
+def test_application_next_action_uses_contract_maximum(tmp_path):
+    model_type = ApplicationProjectionDB.__table__.c.next_action.type
+    migrated_type = _migrated_column(
+        tmp_path,
+        "jobsearch_applications",
+        "next_action",
+    )["type"]
+
+    assert isinstance(model_type, String)
+    assert model_type.length == 500
+    assert isinstance(migrated_type, String)
+    assert migrated_type.length == 500
 
 
 def test_projection_checkpoint_requires_explicit_measured_lag(tmp_path):

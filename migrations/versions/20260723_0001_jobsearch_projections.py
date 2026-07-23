@@ -20,7 +20,11 @@ depends_on: str | Sequence[str] | None = None
 def _freshness_columns() -> tuple[sa.Column, ...]:
     return (
         sa.Column("source_event_id", sa.String(length=128), nullable=False),
-        sa.Column("source_event_position", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "source_event_position",
+            sa.String(length=128),
+            nullable=False,
+        ),
         sa.Column(
             "projected_at",
             sa.DateTime(timezone=True),
@@ -69,7 +73,7 @@ def upgrade() -> None:
         sa.Column("state", sa.String(length=32), nullable=False),
         sa.Column("stage_history", sa.JSON(), nullable=False),
         sa.Column("artifact_refs", sa.JSON(), nullable=False),
-        sa.Column("next_action", sa.String(length=255), nullable=True),
+        sa.Column("next_action", sa.String(length=500), nullable=True),
         sa.Column(
             "next_action_deadline",
             sa.DateTime(timezone=True),
@@ -149,7 +153,11 @@ def upgrade() -> None:
         "jobsearch_projection_checkpoints",
         sa.Column("projection_type", sa.String(length=32), nullable=False),
         sa.Column("source_event_id", sa.String(length=128), nullable=False),
-        sa.Column("source_event_position", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "source_event_position",
+            sa.String(length=128),
+            nullable=False,
+        ),
         sa.Column(
             "projected_at",
             sa.DateTime(timezone=True),
