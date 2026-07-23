@@ -473,7 +473,7 @@
     tests, 6 outreach provenance/fail-closed tests, and 1 relationship-schema
     test before the 60-test combined JS-U02 gate.
 
-- [ ] **Step 5: Obtain independent whole-unit review**
+- [x] **Step 5: Obtain independent whole-unit review**
 
   The reviewer reports findings first and verifies:
 
@@ -484,6 +484,10 @@
   - deterministic pagination and bounded SQL;
   - a read-only GraphQL schema;
   - no JS-U03–JS-U08 scope.
+
+  Independent whole-unit review at `3657dec` reports no Critical, Important, or
+  Minor findings and marks the stacked unit ready to merge subject to its
+  dependency order.
 
 - [ ] **Step 6: Push and open a stacked GitHub PR**
 
