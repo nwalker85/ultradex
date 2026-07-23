@@ -527,7 +527,7 @@ async def test_jobsearch_page_sizes_are_bounded(db_session, field, first):
 
 
 def test_jobsearch_schema_has_no_mutation_root():
-    assert schema._schema.mutation_type is None
+    assert schema.mutation is None
 
 
 @pytest.mark.asyncio

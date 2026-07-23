@@ -270,6 +270,7 @@ class JobSearchProjectionRepository:
         ),
         freshness: ProjectionFreshnessV1 | None,
     ) -> dict[str, object]:
+        """Combine row provenance with checkpoint-scoped lag and health."""
         if freshness is None:
             raise ValueError("projection row has no projection checkpoint")
         return {
