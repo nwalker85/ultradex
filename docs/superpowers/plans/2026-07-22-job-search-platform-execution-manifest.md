@@ -59,7 +59,7 @@ JS-C01 control-surface/job-search contracts
 | JS-C01 | reviewed locally; PR blocked | 47 Node and 39 Python tests pass; npm and wheel consumer installs pass. Forgejo PostgreSQL is restart-looping because its host filesystem is full, so push/PR is unavailable. |
 | JS-O01 | reviewed locally; PR blocked | 35 Python tests and package build pass. Same Forgejo outage blocks push/PR. |
 | JS-G01 | pending | New-repository lifecycle work has not started. |
-| JS-U01 | ready for PR | 43 tests pass with one strict MCP XFAIL; independent review is clear; authentication, executable worker registry, atomic scoped idempotency, governed 503 handles, SDK delegation, bounded GraphQL reads, honest nullable freshness, shared OpenAPI/runtime validation, compile, build, and compatibility wheel checks pass. |
+| JS-U01 | PR 2 open | 43 tests pass with one strict MCP XFAIL; independent review is clear; authentication, executable worker registry, atomic scoped idempotency, governed 503 handles, SDK delegation, bounded GraphQL reads, honest nullable freshness, shared OpenAPI/runtime validation, compile, build, and compatibility wheel checks pass. |
 | JS-U02–JS-U08 | pending | Dependency boundaries remain frozen below. |
 
 ## Orchestration rules

@@ -104,4 +104,4 @@
 - [x] Wheel inspection and an out-of-tree import check confirm current `ultradex_sdk`, compatible `sdk`, and metadata, with no `mcp`, `api`, `core`, or CLI package.
 - [x] `git diff --check origin/main...HEAD` passes.
 - [x] Independent review reports findings first and clears the unit.
-- [ ] Push branch and open a GitHub PR; do not merge without PR-specific approval.
+- [x] Push branch and open GitHub PR 2; do not merge without PR-specific approval.
