@@ -66,13 +66,13 @@ malformed.
 - Modify: `tests/test_jobsearch_migrations.py`
 - Create: `tests/test_jobsearch_command_models.py`
 
-- [ ] Write failing migration and model tests for:
+- [x] Write failing migration and model tests for:
   `jobsearch_commands`, `jobsearch_evidence_refs`, `jobsearch_approvals`,
   `jobsearch_lifecycle_events`, and `jobsearch_execution_receipts`.
-- [ ] Assert the revision depends on `20260723_0001`, upgrades from base to head,
+- [x] Assert the revision depends on `20260723_0001`, upgrades from base to head,
   downgrades cleanly, and leaves no JS-U03 tables behind.
-- [ ] Add `OperationStatus.REFUSED` without changing legacy status spellings.
-- [ ] Add exact SQLAlchemy rows:
+- [x] Add `OperationStatus.REFUSED` without changing legacy status spellings.
+- [x] Add exact SQLAlchemy rows:
   - accepted command: operation/command IDs, command name, actor, delegation,
     idempotency key, canonical context, validated parameters, timestamps;
   - evidence reference: the seven fields of `JobSearchEvidenceReferenceV1`;
@@ -82,12 +82,12 @@ malformed.
     publication timestamp;
   - receipt: receipt/operation/event IDs, status, reason code, canonical receipt
     payload, receipt hash, timestamps.
-- [ ] Add unique constraints for one accepted command and one terminal receipt per
+- [x] Add unique constraints for one accepted command and one terminal receipt per
   operation, plus indexes used by operation, outreach, and unpublished-event reads.
-- [ ] Export only the public row types needed by repositories and tests.
-- [ ] Run:
+- [x] Export only the public row types needed by repositories and tests.
+- [x] Run:
   `python -m pytest tests/test_jobsearch_migrations.py tests/test_jobsearch_command_models.py -q`.
-- [ ] Commit: `feat: persist governed job-search command records`.
+- [x] Commit: `feat: persist governed job-search command records`.
 
 ### Task 2: Issue and validate privacy-preserving execution receipts
 
@@ -99,22 +99,22 @@ malformed.
 - Modify: `requirements-dev.txt`
 - Modify: `.env.example`
 
-- [ ] Write failing tests that construct succeeded, failed, and refused receipts and
+- [x] Write failing tests that construct succeeded, failed, and refused receipts and
   validate them with `ExecutionReceiptV1.from_dict`.
-- [ ] Assert successful receipts contain a result commitment and no reason code;
+- [x] Assert successful receipts contain a result commitment and no reason code;
   failed/refused receipts use only the V1 reason catalog.
-- [ ] Assert tenant, actor, action, idempotency, and result values are represented by
+- [x] Assert tenant, actor, action, idempotency, and result values are represented by
   keyed HMAC commitments or opaque/pairwise identifiers, never copied into a public
   receipt field.
-- [ ] Assert tampering breaks Ed25519 signature verification against the configured
+- [x] Assert tampering breaks Ed25519 signature verification against the configured
   public key.
-- [ ] Implement base64url parsing, opaque ID generation, pairwise ID derivation,
+- [x] Implement base64url parsing, opaque ID generation, pairwise ID derivation,
   domain-separated HMAC commitments, whole-minute timestamps, receipt construction,
   signing via `execution_receipt_signing_bytes_v1`, structural validation, hashing,
   and signature verification.
-- [ ] Add `cryptography` to runtime dependencies.
-- [ ] Run: `python -m pytest tests/test_jobsearch_receipts.py -q`.
-- [ ] Commit: `feat: issue signed job-search execution receipts`.
+- [x] Add `cryptography` to runtime dependencies.
+- [x] Run: `python -m pytest tests/test_jobsearch_receipts.py -q`.
+- [x] Commit: `feat: issue signed job-search execution receipts`.
 
 ### Task 3: Build the canonical gateway and JetStream task boundary
 
@@ -129,7 +129,7 @@ malformed.
 - Create: `tests/test_jobsearch_nats.py`
 - Modify: `requirements.txt`
 
-- [ ] Write failing tests proving the Gateway:
+- [x] Write failing tests proving the Gateway:
   - constructs and re-validates `JobSearchCommandV1`;
   - derives actor identity and ignores caller-supplied actor data;
   - preserves the complete `CorrelationContextV1`;
@@ -140,19 +140,19 @@ malformed.
   - never publishes an unregistered command;
   - returns a failed handle and durable failed receipt after a post-acceptance
     publish failure.
-- [ ] Add a `JobSearchTaskPublisher` protocol and a JetStream implementation. Stream
+- [x] Add a `JobSearchTaskPublisher` protocol and a JetStream implementation. Stream
   setup is idempotent and covers command and lifecycle subjects.
-- [ ] Add a closed command-to-subject registry derived from
+- [x] Add a closed command-to-subject registry derived from
   `COMMAND_NAMES_V1`; do not concatenate arbitrary caller input into a subject.
-- [ ] Add a `JobSearchGatewayService` that validates first, then atomically persists
+- [x] Add a `JobSearchGatewayService` that validates first, then atomically persists
   operation, idempotency binding, accepted command, and accepted lifecycle event,
   and only then publishes.
-- [ ] Extend operation mutations with `commit=False` support so a terminal state,
+- [x] Extend operation mutations with `commit=False` support so a terminal state,
   event, projection write, and receipt can share one transaction.
-- [ ] Add `nats-py` to runtime dependencies.
-- [ ] Run:
+- [x] Add `nats-py` to runtime dependencies.
+- [x] Run:
   `python -m pytest tests/test_jobsearch_command_gateway.py tests/test_jobsearch_nats.py tests/test_idempotency_atomicity.py tests/test_command_acceptance.py -q`.
-- [ ] Commit: `feat: add canonical JetStream job-search gateway`.
+- [x] Commit: `feat: add canonical JetStream job-search gateway`.
 
 ### Task 4: Execute the command catalog with refusal, retry, and approval safety
 
@@ -166,11 +166,11 @@ malformed.
 - Create: `tests/test_jobsearch_executors.py`
 - Create: `tests/test_jobsearch_worker.py`
 
-- [ ] Write failing executor tests for every canonical command name.
-- [ ] Implement closed protocols for source ingestion, opportunity scoring, Dex
+- [x] Write failing executor tests for every canonical command name.
+- [x] Implement closed protocols for source ingestion, opportunity scoring, Dex
   relationship resolution, and outreach delivery. Default bindings raise structured
   domain refusals rather than making network calls.
-- [ ] Implement local handlers:
+- [x] Implement local handlers:
   - `opportunities.create` loads a validated evidence reference and creates a
     discovered opportunity;
   - `applications.transition` appends immutable stage history for an existing
@@ -180,25 +180,25 @@ malformed.
   - `outreach.approve` creates a 24-hour approval contract and marks the exact
     outreach approved;
   - `evidence.export` returns only an opaque accountability export reference.
-- [ ] Implement port-backed handlers:
+- [x] Implement port-backed handlers:
   `sources.ingest`, `opportunities.score`, `relationships.sync`, and
   `outreach.send`.
-- [ ] Assert default port bindings refuse with a terminal event and receipt.
-- [ ] Assert outreach send refuses missing, expired, cancelled, wrong-outreach,
+- [x] Assert default port bindings refuse with a terminal event and receipt.
+- [x] Assert outreach send refuses missing, expired, cancelled, wrong-outreach,
   wrong-channel, and wrong-commitment approvals without calling the sender.
-- [ ] Assert a valid approval calls the sender once and stores only the returned
+- [x] Assert a valid approval calls the sender once and stores only the returned
   evidence reference.
-- [ ] Add retryable execution errors: attempts below the configured limit emit a
+- [x] Add retryable execution errors: attempts below the configured limit emit a
   bounded retry event and do not mint a terminal receipt; the final attempt fails
   with exactly one receipt. A replay after a terminal receipt returns the stored
   outcome and performs no second mutation.
-- [ ] Stamp projection rows/checkpoints from the terminal event identity. Event,
+- [x] Stamp projection rows/checkpoints from the terminal event identity. Event,
   projection, operation state, approval, and receipt commit atomically.
-- [ ] Implement a pull consumer with explicit ACK after terminal persistence,
+- [x] Implement a pull consumer with explicit ACK after terminal persistence,
   delayed NAK for retryable failures, and TERM for malformed/unregistered tasks.
-- [ ] Run:
+- [x] Run:
   `python -m pytest tests/test_jobsearch_executors.py tests/test_jobsearch_worker.py -q`.
-- [ ] Commit: `feat: execute governed job-search command catalog`.
+- [x] Commit: `feat: execute governed job-search command catalog`.
 
 ### Task 5: Expose the REST command API and official Python SDK
 
@@ -213,24 +213,24 @@ malformed.
 - Modify: `tests/test_sdk.py`
 - Modify: `tests/test_auth_boundary.py`
 
-- [ ] Write failing API tests for authenticated submission of all nine command names,
+- [x] Write failing API tests for authenticated submission of all nine command names,
   exact shared `ContractHandleV1` OpenAPI projection, required idempotency keys,
   validation failures, authority refusal, replay, conflict, and unavailable NATS.
-- [ ] Expose:
+- [x] Expose:
   `POST /api/v2/job-search/commands/{command_name}` with a parameters-only JSON
   object. Actor identity comes exclusively from the bearer principal.
-- [ ] Keep authentication/authorization HTTP errors outside operation truth. Return
+- [x] Keep authentication/authorization HTTP errors outside operation truth. Return
   governed accepted, refused, or failed handles for accepted command intent.
-- [ ] Add `UltradexClient.submit_jobsearch_command` plus one typed convenience method
+- [x] Add `UltradexClient.submit_jobsearch_command` plus one typed convenience method
   per canonical command. The SDK sends REST only; it never imports NATS or database
   code.
-- [ ] Re-validate outbound parameters locally with the shared contract by creating a
+- [x] Re-validate outbound parameters locally with the shared contract by creating a
   client-side canonical envelope whose server-owned context is not sent.
-- [ ] Assert the SDK preserves idempotency, delegation, and correlation headers and
+- [x] Assert the SDK preserves idempotency, delegation, and correlation headers and
   never sends `X-Actor-Id`.
-- [ ] Run:
+- [x] Run:
   `python -m pytest tests/test_jobsearch_command_api.py tests/test_sdk.py tests/test_auth_boundary.py -q`.
-- [ ] Commit: `feat: expose official job-search command SDK`.
+- [x] Commit: `feat: expose official job-search command SDK`.
 
 ### Task 6: Wire the runnable NATS worker without cutting over legacy ARQ
 
@@ -242,18 +242,18 @@ malformed.
 - Modify: `api/main.py`
 - Create: `tests/test_jobsearch_runtime.py`
 
-- [ ] Write failing runtime tests proving the API uses a JetStream publisher when
+- [x] Write failing runtime tests proving the API uses a JetStream publisher when
   configured, reports a governed failure when it is not bound, and closes its NATS
   connection on shutdown.
-- [ ] Add a JetStream-enabled NATS service and a separate `jobsearch-worker` service
+- [x] Add a JetStream-enabled NATS service and a separate `jobsearch-worker` service
   to Compose. Preserve the existing Redis and ARQ worker unchanged.
-- [ ] Document secret custody, NATS subjects, API/SDK examples, worker command,
+- [x] Document secret custody, NATS subjects, API/SDK examples, worker command,
   refusal behavior for unbound adapters, and the explicit non-delivery guarantee.
-- [ ] Document that JS-U04 and JS-U06 must replace the default refusal ports before
+- [x] Document that JS-U04 and JS-U06 must replace the default refusal ports before
   source ingestion or outbound delivery can be claimed live.
-- [ ] Run:
+- [x] Run:
   `python -m pytest tests/test_jobsearch_runtime.py tests/test_runtime_baseline.py tests/test_worker_contract.py -q`.
-- [ ] Commit: `docs: wire governed job-search command runtime`.
+- [x] Commit: `docs: wire governed job-search command runtime`.
 
 ### Task 7: Full verification and review
 
@@ -261,26 +261,26 @@ malformed.
 
 - Modify only files required to fix verified findings.
 
-- [ ] Install the changed dependency set into the isolated worktree environment.
-- [ ] Run the complete suite:
+- [x] Install the changed dependency set into the isolated worktree environment.
+- [x] Run the complete suite:
   `python -m pytest -q`.
-- [ ] Run:
+- [x] Run:
   `python -m compileall -q api core sdk ultradex_sdk tests migrations`.
-- [ ] Run: `python -m build`.
-- [ ] Create a clean temporary virtual environment, install the wheel, and run:
+- [x] Run: `python -m build`.
+- [x] Create a clean temporary virtual environment, install the wheel, and run:
   `python -m pip check`.
-- [ ] Verify the packaged SDK imports and validates all nine command methods without
+- [x] Verify the packaged SDK imports and validates all nine command methods without
   importing service-only modules.
-- [ ] Inspect:
+- [x] Inspect:
   `git diff --check`,
   `git status --short`,
   `git log --oneline origin/main..HEAD`,
   and `git diff --stat origin/main...HEAD`.
-- [ ] Review authority, idempotency, retry, receipt, approval, raw-content,
+- [x] Review authority, idempotency, retry, receipt, approval, raw-content,
   cardinality, migration, SDK-only, and legacy-compatibility boundaries.
-- [ ] Update the execution manifest with JS-U03 PR evidence and the honest JS-U04
+- [x] Update the execution manifest with JS-U03 PR evidence and the honest JS-U04
   dependency state.
-- [ ] Push `feat/jobsearch-governed-commands` and open a GitHub PR against `main`.
+- [x] Push `feat/jobsearch-governed-commands` and open a GitHub PR against `main`.
   Do not merge without explicit approval for that PR.
 
 ## Acceptance proof
