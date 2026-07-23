@@ -9,11 +9,22 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from core import (
+    JobSearchProjectionRepository,
     OperationDB,
     OperationEventDB,
     get_db,
 )
 from api.auth import AuthenticatedPrincipal, require_read_principal
+from .jobsearch_types import (
+    Application,
+    ApplicationPage,
+    Opportunity,
+    OpportunityPage,
+    Outreach,
+    OutreachPage,
+    Relationship,
+    RelationshipPage,
+)
 
 
 async def get_graphql_context(
@@ -81,6 +92,136 @@ class OperationGQL:
 @strawberry.type
 class Query:
     """GraphQL query root"""
+
+    @strawberry.field
+    def opportunity(
+        self,
+        info: strawberry.Info,
+        id: str,
+    ) -> Opportunity | None:
+        projection = JobSearchProjectionRepository(
+            info.context["db"]
+        ).get_opportunity(id)
+        return (
+            None
+            if projection is None
+            else Opportunity.from_contract(projection)
+        )
+
+    @strawberry.field
+    def opportunities(
+        self,
+        info: strawberry.Info,
+        first: int = 25,
+        after: str | None = None,
+        status: str | None = None,
+    ) -> OpportunityPage:
+        page = JobSearchProjectionRepository(
+            info.context["db"]
+        ).list_opportunities(
+            first=first,
+            after=after,
+            status=status,
+        )
+        return OpportunityPage.from_page(page)
+
+    @strawberry.field
+    def application(
+        self,
+        info: strawberry.Info,
+        id: str,
+    ) -> Application | None:
+        projection = JobSearchProjectionRepository(
+            info.context["db"]
+        ).get_application(id)
+        return (
+            None
+            if projection is None
+            else Application.from_contract(projection)
+        )
+
+    @strawberry.field
+    def applications(
+        self,
+        info: strawberry.Info,
+        first: int = 25,
+        after: str | None = None,
+        status: str | None = None,
+        opportunity_id: str | None = None,
+    ) -> ApplicationPage:
+        page = JobSearchProjectionRepository(
+            info.context["db"]
+        ).list_applications(
+            first=first,
+            after=after,
+            status=status,
+            opportunity_id=opportunity_id,
+        )
+        return ApplicationPage.from_page(page)
+
+    @strawberry.field
+    def relationship(
+        self,
+        info: strawberry.Info,
+        id: str,
+    ) -> Relationship | None:
+        projection = JobSearchProjectionRepository(
+            info.context["db"]
+        ).get_relationship(id)
+        return (
+            None
+            if projection is None
+            else Relationship.from_contract(projection)
+        )
+
+    @strawberry.field
+    def relationships(
+        self,
+        info: strawberry.Info,
+        first: int = 25,
+        after: str | None = None,
+        opportunity_id: str | None = None,
+    ) -> RelationshipPage:
+        page = JobSearchProjectionRepository(
+            info.context["db"]
+        ).list_relationships(
+            first=first,
+            after=after,
+            opportunity_id=opportunity_id,
+        )
+        return RelationshipPage.from_page(page)
+
+    @strawberry.field
+    def outreach_item(
+        self,
+        info: strawberry.Info,
+        id: str,
+    ) -> Outreach | None:
+        projection = JobSearchProjectionRepository(
+            info.context["db"]
+        ).get_outreach(id)
+        return (
+            None
+            if projection is None
+            else Outreach.from_projection(projection)
+        )
+
+    @strawberry.field
+    def outreach(
+        self,
+        info: strawberry.Info,
+        first: int = 25,
+        after: str | None = None,
+        status: str | None = None,
+        opportunity_id: str | None = None,
+    ) -> OutreachPage:
+        page = JobSearchProjectionRepository(info.context["db"]).list_outreach(
+            first=first,
+            after=after,
+            status=status,
+            opportunity_id=opportunity_id,
+        )
+        return OutreachPage.from_page(page)
 
     @strawberry.field
     def operation(self, info: strawberry.Info, id: str) -> Optional[OperationGQL]:

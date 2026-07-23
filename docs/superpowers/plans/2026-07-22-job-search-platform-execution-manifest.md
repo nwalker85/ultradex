@@ -52,15 +52,16 @@ JS-C01 control-surface/job-search contracts
 | JS-U07 | `ultradex` plus fleet config | Event-to-telemetry projector, dashboard, alerts, catalog, runbooks | JS-O01, JS-U03 | redaction, cardinality, lag, receipt coverage |
 | JS-U08 | `ultradex` plus dossier projection | Computed Blind Spots/Broken Bindings and end-to-end canary | JS-U07 | outage invariants and accountability export |
 
-## Execution status (2026-07-22)
+## Execution status (2026-07-23)
 
 | ID | State | Evidence / blocker |
 |---|---|---|
-| JS-C01 | reviewed locally; PR blocked | 47 Node and 39 Python tests pass; npm and wheel consumer installs pass. Forgejo PostgreSQL is restart-looping because its host filesystem is full, so push/PR is unavailable. |
-| JS-O01 | reviewed locally; PR blocked | 35 Python tests and package build pass. Same Forgejo outage blocks push/PR. |
+| JS-C01 | PR 18 open; green | `ravenhelm-contracts` contract PR is open with required checks green. |
+| JS-O01 | PR 6 open; green | Python instrumentation PR is open with required checks green. |
 | JS-G01 | pending | New-repository lifecycle work has not started. |
-| JS-U01 | PR 2 open | 43 tests pass with one strict MCP XFAIL; independent review is clear; authentication, executable worker registry, atomic scoped idempotency, governed 503 handles, SDK delegation, bounded GraphQL reads, honest nullable freshness, shared OpenAPI/runtime validation, compile, build, and compatibility wheel checks pass. |
-| JS-U02–JS-U08 | pending | Dependency boundaries remain frozen below. |
+| JS-U01 | PR 2 open; reviewed | Independent review is clear; authentication, executable worker registry, atomic scoped idempotency, governed 503 handles, SDK delegation, bounded GraphQL reads, honest nullable freshness, shared OpenAPI/runtime validation, compile, build, and compatibility wheel checks pass. |
+| JS-U02 | PR 3 open; reviewed | [Ultradex PR 3](https://github.com/nwalker85/ultradex/pull/3) is stacked on PR 2. Versioned migrations, contract-backed persistence reads, and a read-only GraphQL projection surface are implemented. Final-review fixes preserve same-connection in-memory startup, canonical checkpoint keys, validated outreach item provenance, and exact `RelationshipV1` schema scope. Verification passes with 103 tests and one pre-existing strict MCP XFAIL; the focused JS-U02 suite passes all 60 tests. Compile, wheel/sdist build, dependency, and diff checks pass. Independent whole-unit review reports no Critical, Important, or Minor findings. Do not merge until PR 2 is merged and `ravenhelm-contracts==0.2.0` is published. |
+| JS-U03–JS-U08 | pending | Dependency boundaries remain frozen below; no implementation has started in these units. |
 
 ## Orchestration rules
 

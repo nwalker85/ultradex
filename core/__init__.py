@@ -21,6 +21,21 @@ from .models import (
     IdempotencyKeyDB,
 )
 from .database import Database, close_database, init_database, get_db
+from .jobsearch_migrations import alembic_config, run_jobsearch_migrations
+from .jobsearch_models import (
+    JOBSEARCH_PROJECTION_TABLES,
+    JOBSEARCH_PROJECTION_TYPES,
+    ApplicationProjectionDB,
+    OpportunityProjectionDB,
+    OutreachProjectionDB,
+    ProjectionCheckpointDB,
+    RelationshipProjectionDB,
+)
+from .jobsearch_projections import (
+    JobSearchProjectionRepository,
+    ProjectedOutreach,
+    ProjectionPage,
+)
 from .dex_client import DexClient
 from .claude_client import ClaudeClient
 from .contact_analyzer import ContactAnalyzer
@@ -63,4 +78,16 @@ __all__ = [
     "EventProducer",
     "DelegationService",
     "IdempotencyService",
+    "JOBSEARCH_PROJECTION_TABLES",
+    "JOBSEARCH_PROJECTION_TYPES",
+    "OpportunityProjectionDB",
+    "ApplicationProjectionDB",
+    "RelationshipProjectionDB",
+    "OutreachProjectionDB",
+    "ProjectionCheckpointDB",
+    "JobSearchProjectionRepository",
+    "ProjectedOutreach",
+    "ProjectionPage",
+    "alembic_config",
+    "run_jobsearch_migrations",
 ]

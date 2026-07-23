@@ -38,6 +38,14 @@ Read-only lifecycle queries are mounted at `POST /api/graphql`. The official Pyt
 SDK uses GraphQL for operation and event projections. REST v1/v2 operation reads
 remain available for compatibility during the migration.
 
+The job-search GraphQL surface is also read-only. It exposes the singular queries
+`opportunity`, `application`, `relationship`, and `outreachItem`, plus the bounded
+list queries `opportunities`, `applications`, `relationships`, and `outreach`.
+List pages return `freshness: null` until a durable projection checkpoint exists;
+the service never invents a source position or zero-lag state. Raw connector content
+such as Gmail bodies, LinkedIn messages, Dex notes, resumes, prompts, completions,
+drafts, and outreach text is never persisted or returned by these projections.
+
 ## Python SDK
 
 ```python
@@ -82,10 +90,17 @@ credential, `ULTRADEX_API_TOKEN`, and `ULTRADEX_OPERATOR_ID`. Secrets belong in
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
+alembic upgrade head
 pytest -q
-python -m compileall -q api core sdk tests
+python -m compileall -q api core sdk ultradex_sdk tests migrations
 python -m build
+python -m pip check
 ```
+
+Production startup preserves the legacy table bootstrap and then applies the
+versioned job-search Alembic revision. The JS-U02 persistence unit is stacked on
+Ultradex PR 2 and `ravenhelm-contracts` PR 18; it must not merge before those
+dependencies are ready.
 
 Run the service through the repository's managed runtime/deployment configuration.
 Node processes, if added, must use PM2 per Ravenhelm standards.

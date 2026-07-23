@@ -53,9 +53,6 @@ logs/
 # Docker
 docker-compose.override.yml
 
-# Migrations (until first schema finalized)
-migrations/versions/*.py
-
 # Testing
 .pytest_cache/
 .coverage
