@@ -158,6 +158,13 @@ class ReceiptIssuer:
         result: dict[str, object] | None,
         reason_code: str | None,
     ) -> ExecutionReceiptV1:
+        started_text = _whole_minute(started_at)
+        completed_text = _whole_minute(completed_at)
+        if completed_text < started_text:
+            # Distributed worker clocks and legacy naive operation timestamps can
+            # skew within a task. Receipts remain monotonic and make no negative
+            # duration claim.
+            completed_text = started_text
         payload: dict[str, object] = {
             "contract_version": ACCOUNTABILITY_CONTRACT_VERSION,
             "receipt_id": self.new_opaque_id(),
@@ -194,8 +201,8 @@ class ReceiptIssuer:
             ),
             "executor_pairwise_id": self._executor_pairwise_id,
             "status": status,
-            "started_at": _whole_minute(started_at),
-            "completed_at": _whole_minute(completed_at),
+            "started_at": started_text,
+            "completed_at": completed_text,
             "result_commitment": (
                 self._commitment("result", result)
                 if status == "succeeded" and result is not None
