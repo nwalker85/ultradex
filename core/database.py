@@ -3,6 +3,8 @@
 from collections.abc import Generator
 
 from sqlalchemy.orm import Session, sessionmaker
+from .jobsearch_migrations import run_jobsearch_migrations
+from .jobsearch_models import JOBSEARCH_PROJECTION_TABLES
 from .models import (
     Base,
     get_engine,
@@ -22,7 +24,13 @@ class Database:
     
     def init(self):
         """Initialize database tables"""
-        Base.metadata.create_all(self.engine)
+        legacy_tables = [
+            table
+            for table in Base.metadata.sorted_tables
+            if table.name not in JOBSEARCH_PROJECTION_TABLES
+        ]
+        Base.metadata.create_all(self.engine, tables=legacy_tables)
+        run_jobsearch_migrations(self.database_url)
     
     def get_session(self) -> Session:
         """Get database session"""

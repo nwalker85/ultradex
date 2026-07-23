@@ -10,3 +10,4 @@ arq==0.25.0
 redis==5.0.1
 strawberry-graphql[fastapi]==0.323.1
 ravenhelm-contracts==0.2.0
+alembic==1.18.5
