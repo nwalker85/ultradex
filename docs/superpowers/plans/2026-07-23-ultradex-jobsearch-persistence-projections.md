@@ -389,7 +389,7 @@
 **Interfaces:**
 - Documents `alembic upgrade head`, startup behavior, GraphQL query names, privacy custody, nullable freshness, and stacked dependency order.
 
-- [ ] **Step 1: Document the operator and developer surface**
+- [x] **Step 1: Document the operator and developer surface**
 
   Add exact commands:
 
@@ -400,7 +400,7 @@
 
   State that production startup applies the versioned job-search revision after legacy bootstrap, GraphQL is read-only, raw connector content is never persisted, and the unit is stacked on PR 2 plus `ravenhelm-contracts` PR 18.
 
-- [ ] **Step 2: Run the complete Python verification gate**
+- [x] **Step 2: Run the complete Python verification gate**
 
   Run:
 
@@ -420,7 +420,7 @@
   - dependency check exits zero;
   - diff check emits no output.
 
-- [ ] **Step 3: Inspect migration and GraphQL proof boundaries**
+- [x] **Step 3: Inspect migration and GraphQL proof boundaries**
 
   Confirm:
 
@@ -433,13 +433,29 @@
 
   Expected: all JS-U02 migration and query tests pass independently.
 
-- [ ] **Step 4: Commit documentation and verification evidence**
+- [x] **Step 4: Commit documentation and verification evidence**
 
   ```bash
   git add README.md docs/superpowers/plans
   git commit -m "docs: record job-search persistence verification" \
     -m "Co-Authored-By: OpenAI Codex <codex@openai.com>"
   ```
+
+  Verification evidence recorded on 2026-07-23:
+
+  - `python -m pytest -q`: 90 passed, one pre-existing strict MCP XFAIL.
+  - `python -m compileall -q api core sdk ultradex_sdk tests migrations`: exited
+    zero without output.
+  - `python -m build`: built `ultradex_sdk-1.1.0.tar.gz` and
+    `ultradex_sdk-1.1.0-py3-none-any.whl`.
+  - `python -m pip check`: no broken requirements. The specified shared virtual
+    environment initially lacked the `pip` module; `python -m ensurepip --upgrade`
+    installed the bundled pip before the exact check was rerun.
+  - `git diff --check feat/jobsearch-observability-foundation...HEAD`: exited zero
+    without output.
+  - `python -m pytest tests/test_jobsearch_migrations.py
+    tests/test_jobsearch_projection_repository.py tests/test_graphql_jobsearch.py
+    -q`: 47 passed.
 
 - [ ] **Step 5: Obtain independent whole-unit review**
 
