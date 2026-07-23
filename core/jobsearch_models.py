@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Column, DateTime, Float, JSON, String, Text
+from sqlalchemy import BigInteger, Column, DateTime, Float, JSON, String
 
 from .models import Base
 
@@ -41,7 +41,7 @@ class OpportunityProjectionDB(Base):
     role_family = Column(String(128), nullable=True)
     state = Column(String(32), nullable=False, index=True)
     score = Column(Float, nullable=True)
-    score_explanation = Column(Text, nullable=True)
+    score_explanation = Column(String(1000), nullable=True)
     risk_flags = Column(JSON, nullable=False, default=list)
     evidence_refs = Column(JSON, nullable=False, default=list)
     source_event_id = Column(String(128), nullable=False)
@@ -85,7 +85,7 @@ class RelationshipProjectionDB(Base):
     opportunity_id = Column(String(64), nullable=False, index=True)
     dex_contact_ref = Column(String(255), nullable=False)
     relevance_score = Column(Float, nullable=True)
-    relevance_reason = Column(Text, nullable=True)
+    relevance_reason = Column(String(500), nullable=True)
     relevance_signals = Column(JSON, nullable=False, default=list)
     source_event_id = Column(String(128), nullable=False)
     source_event_position = Column(BigInteger, nullable=False)
@@ -129,5 +129,5 @@ class ProjectionCheckpointDB(Base):
     source_event_id = Column(String(128), nullable=False)
     source_event_position = Column(BigInteger, nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
-    lag_ms = Column(BigInteger, nullable=False, default=0)
+    lag_ms = Column(BigInteger, nullable=False)
     status = Column(String(32), nullable=False, index=True)

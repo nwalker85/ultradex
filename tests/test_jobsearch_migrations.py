@@ -1,30 +1,68 @@
 from alembic import command
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import String, create_engine, inspect
 
 from core.database import Database
 from core.jobsearch_migrations import alembic_config, run_jobsearch_migrations
 from core.jobsearch_models import (
     JOBSEARCH_PROJECTION_TABLES,
-    ApplicationProjectionDB,
     OpportunityProjectionDB,
-    OutreachProjectionDB,
     ProjectionCheckpointDB,
     RelationshipProjectionDB,
 )
+
+
+def _migrated_column(tmp_path, table_name, column_name):
+    engine = create_engine(f"sqlite:///{tmp_path / f'{table_name}.db'}")
+    run_jobsearch_migrations(str(engine.url))
+    columns = inspect(engine).get_columns(table_name)
+    return next(column for column in columns if column["name"] == column_name)
+
+
+def test_projection_checkpoint_requires_explicit_measured_lag(tmp_path):
+    model_column = ProjectionCheckpointDB.__table__.c.lag_ms
+    migrated_column = _migrated_column(
+        tmp_path,
+        "jobsearch_projection_checkpoints",
+        "lag_ms",
+    )
+
+    assert model_column.default is None
+    assert migrated_column["default"] is None
+
+
+def test_opportunity_fit_explanation_uses_contract_maximum(tmp_path):
+    model_type = OpportunityProjectionDB.__table__.c.score_explanation.type
+    migrated_type = _migrated_column(
+        tmp_path,
+        "jobsearch_opportunities",
+        "score_explanation",
+    )["type"]
+
+    assert isinstance(model_type, String)
+    assert model_type.length == 1000
+    assert isinstance(migrated_type, String)
+    assert migrated_type.length == 1000
+
+
+def test_relationship_relevance_summary_uses_contract_maximum(tmp_path):
+    model_type = RelationshipProjectionDB.__table__.c.relevance_reason.type
+    migrated_type = _migrated_column(
+        tmp_path,
+        "jobsearch_relationships",
+        "relevance_reason",
+    )["type"]
+
+    assert isinstance(model_type, String)
+    assert model_type.length == 500
+    assert isinstance(migrated_type, String)
+    assert migrated_type.length == 500
 
 
 def test_upgrade_head_creates_only_versioned_jobsearch_schema(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
     run_jobsearch_migrations(str(engine.url))
     tables = set(inspect(engine).get_table_names())
-    assert {
-        "alembic_version",
-        "jobsearch_opportunities",
-        "jobsearch_applications",
-        "jobsearch_relationships",
-        "jobsearch_outreach",
-        "jobsearch_projection_checkpoints",
-    } <= tables
+    assert tables == {"alembic_version"} | set(JOBSEARCH_PROJECTION_TABLES)
 
 
 def test_upgrade_is_idempotent_and_downgrade_removes_jobsearch_tables(tmp_path):
