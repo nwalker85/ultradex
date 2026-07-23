@@ -489,9 +489,14 @@
   Minor findings and marks the stacked unit ready to merge subject to its
   dependency order.
 
-- [ ] **Step 6: Push and open a stacked GitHub PR**
+- [x] **Step 6: Push and open a stacked GitHub PR**
 
   Push `feat/jobsearch-persistence-projections` to the personal GitHub remote and open the PR with base `feat/jobsearch-observability-foundation`. Record that the PR must not merge before PR 2 and must not be merged without explicit PR-specific approval.
+
+  Published as [Ultradex PR 3](https://github.com/nwalker85/ultradex/pull/3),
+  targeting `feat/jobsearch-observability-foundation`. The PR records the
+  dependency on Ultradex PR 2 and the merged/published
+  `ravenhelm-contracts==0.2.0` artifact. No merge was performed.
 
 ---
 
