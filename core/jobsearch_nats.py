@@ -34,6 +34,22 @@ class JobSearchTaskPublisher(Protocol):
     async def publish_lifecycle(self, event: JobSearchEventV1) -> None: ...
 
 
+class UnavailableJobSearchPublisher:
+    """Fail-closed port used when JetStream has no live binding."""
+
+    def __init__(self, reason: str = "NATS is not configured") -> None:
+        self._reason = reason
+
+    async def publish_command(self, command: JobSearchCommandV1) -> None:
+        raise ConnectionError(self._reason)
+
+    async def publish_lifecycle(self, event: JobSearchEventV1) -> None:
+        raise ConnectionError(self._reason)
+
+    async def close(self) -> None:
+        return None
+
+
 class JobSearchNATSPublisher:
     """Publish validated contracts to a bounded JetStream subject catalog."""
 

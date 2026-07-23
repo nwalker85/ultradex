@@ -3,6 +3,7 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import logging
 from contextlib import asynccontextmanager
 from arq import create_pool
 from strawberry.fastapi import GraphQLRouter
@@ -13,6 +14,9 @@ from core import (
     DexClient,
     ClaudeClient,
     ContactAnalyzer,
+    JobSearchNATSPublisher,
+    ReceiptIssuer,
+    UnavailableJobSearchPublisher,
 )
 from . import dependencies
 from .auth import (
@@ -22,6 +26,9 @@ from .auth import (
     validate_auth_configuration,
 )
 from core.workers import redis_settings_from_env
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -38,19 +45,42 @@ async def lifespan(app: FastAPI):
 
     init_database(database_url)
     redis = None
+    jobsearch_publisher = None
     try:
         redis = await create_pool(redis_settings_from_env())
+        receipt_issuer = ReceiptIssuer.from_env()
+        nats_url = os.getenv("NATS_URL")
+        if nats_url:
+            candidate = JobSearchNATSPublisher(url=nats_url)
+            try:
+                await candidate.connect()
+                jobsearch_publisher = candidate
+            except Exception:
+                await candidate.close()
+                logger.warning(
+                    "Job-search JetStream unavailable; commands will fail closed"
+                )
+                jobsearch_publisher = UnavailableJobSearchPublisher(
+                    "NATS JetStream connection unavailable"
+                )
+        else:
+            jobsearch_publisher = UnavailableJobSearchPublisher()
         app_state = {
             "dex": DexClient(dex_api_key),
             "claude": ClaudeClient(claude_api_key),
             "redis": redis,
+            "jobsearch_publisher": jobsearch_publisher,
+            "receipt_issuer": receipt_issuer,
         }
         app_state["analyzer"] = ContactAnalyzer(app_state["dex"], app_state["claude"])
         dependencies.set_app_state(app_state)
         yield
     finally:
+        if jobsearch_publisher is not None:
+            await jobsearch_publisher.close()
         if redis is not None:
             await redis.close()
+        dependencies.set_app_state({})
         close_database()
 
 

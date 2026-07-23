@@ -64,6 +64,7 @@ from .jobsearch_nats import (
     COMMAND_SUBJECTS,
     JobSearchNATSPublisher,
     JobSearchTaskPublisher,
+    UnavailableJobSearchPublisher,
 )
 from .jobsearch_receipts import ReceiptIssuer, verify_receipt_signature
 from .jobsearch_executors import (
@@ -75,7 +76,11 @@ from .jobsearch_executors import (
     RelationshipSyncResult,
     RetryableCommandError,
 )
-from .jobsearch_worker import JobSearchWorker
+from .jobsearch_worker import (
+    JobSearchPullConsumer,
+    JobSearchWorker,
+    run_jobsearch_worker,
+)
 
 __all__ = [
     "ContactBase",
@@ -129,6 +134,7 @@ __all__ = [
     "COMMAND_SUBJECTS",
     "JobSearchNATSPublisher",
     "JobSearchTaskPublisher",
+    "UnavailableJobSearchPublisher",
     "ReceiptIssuer",
     "verify_receipt_signature",
     "DomainRefusal",
@@ -139,4 +145,6 @@ __all__ = [
     "RelationshipSyncResult",
     "RetryableCommandError",
     "JobSearchWorker",
+    "JobSearchPullConsumer",
+    "run_jobsearch_worker",
 ]

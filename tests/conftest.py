@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import base64
 
 import pytest
 from sqlalchemy.orm import Session
@@ -13,6 +14,22 @@ from core.jobsearch_receipts import ReceiptIssuer
 def private_auth_configuration(monkeypatch):
     monkeypatch.setenv("ULTRADEX_API_TOKEN", "test-api-key")
     monkeypatch.setenv("ULTRADEX_OPERATOR_ID", "operator:test")
+    monkeypatch.setenv(
+        "ULTRADEX_ACCOUNTABILITY_HMAC_KEY",
+        base64.urlsafe_b64encode(b"h" * 32).decode().rstrip("="),
+    )
+    monkeypatch.setenv(
+        "ULTRADEX_RECEIPT_ED25519_PRIVATE_KEY",
+        base64.urlsafe_b64encode(bytes(range(32))).decode().rstrip("="),
+    )
+    monkeypatch.setenv(
+        "ULTRADEX_RECEIPT_KEY_ID",
+        f"pairwise:v1:{'A' * 22}",
+    )
+    monkeypatch.setenv(
+        "ULTRADEX_EXECUTOR_PAIRWISE_ID",
+        f"pairwise:v1:{'B' * 22}",
+    )
 
 
 class FakeRedis:
