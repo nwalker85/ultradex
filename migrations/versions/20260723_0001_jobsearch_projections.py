@@ -102,7 +102,6 @@ def upgrade() -> None:
         sa.Column("dex_contact_ref", sa.String(length=255), nullable=False),
         sa.Column("relevance_score", sa.Float(), nullable=True),
         sa.Column("relevance_reason", sa.String(length=500), nullable=True),
-        sa.Column("relevance_signals", sa.JSON(), nullable=False),
         *_freshness_columns(),
         sa.PrimaryKeyConstraint("id"),
     )

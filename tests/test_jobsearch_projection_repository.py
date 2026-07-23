@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from dataclasses import FrozenInstanceError
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import pytest
@@ -8,12 +9,19 @@ from ravenhelm_contracts import (
     ApplicationV1,
     OpportunityV1,
     OutreachV1,
+    ProjectionFreshnessV1,
     RelationshipV1,
 )
+from ravenhelm_contracts.jobsearch_v1 import JOBSEARCH_PROJECTION_TYPES_V1
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from core import JobSearchProjectionRepository, ProjectionPage
+from core import (
+    JOBSEARCH_PROJECTION_TYPES,
+    JobSearchProjectionRepository,
+    ProjectedOutreach,
+    ProjectionPage,
+)
 from core.jobsearch_models import (
     ApplicationProjectionDB,
     OpportunityProjectionDB,
@@ -128,7 +136,6 @@ def _relationship(
         dex_contact_ref="dex-contact-01",
         relevance_score=88,
         relevance_reason=relevance_reason,
-        relevance_signals=["former-colleague"],
         source_event_id="event-row",
         source_event_position="JOBSEARCH:41",
         projected_at=NOW,
@@ -170,7 +177,7 @@ def test_list_opportunities_returns_bounded_contract_page(
             _opportunity("opportunity-01"),
             _opportunity("opportunity-02"),
             _opportunity("opportunity-00", state="archived"),
-            _freshness("opportunity"),
+            _freshness("opportunities"),
         ]
     )
     db_session.commit()
@@ -221,7 +228,7 @@ def test_after_uses_stable_primary_key_cursor(db_session: Session) -> None:
             _opportunity("opportunity-01"),
             _opportunity("opportunity-02"),
             _opportunity("opportunity-03"),
-            _freshness("opportunity"),
+            _freshness("opportunities"),
         ]
     )
     db_session.commit()
@@ -259,18 +266,67 @@ def test_list_rejects_noncanonical_status_filters(
         method(first=10, after=None, status=status)
 
 
+def test_repository_projection_types_match_canonical_contract():
+    assert JOBSEARCH_PROJECTION_TYPES == JOBSEARCH_PROJECTION_TYPES_V1
+
+
+@pytest.mark.parametrize(
+    ("row", "projection_type", "method_name"),
+    [
+        (
+            _opportunity("opportunity-01"),
+            "opportunities",
+            "list_opportunities",
+        ),
+        (
+            _application("application-01"),
+            "applications",
+            "list_applications",
+        ),
+        (
+            _relationship("relationship-01"),
+            "relationships",
+            "list_relationships",
+        ),
+        (
+            _outreach("outreach-01"),
+            "outreach",
+            "list_outreach",
+        ),
+    ],
+)
+def test_every_page_uses_its_canonical_checkpoint_key(
+    db_session: Session,
+    row: object,
+    projection_type: str,
+    method_name: str,
+) -> None:
+    checkpoint = _freshness(projection_type)
+    checkpoint.source_event_id = f"checkpoint-{projection_type}"
+    db_session.add_all([row, checkpoint])
+    db_session.commit()
+
+    page = getattr(JobSearchProjectionRepository(db_session), method_name)(
+        first=10,
+        after=None,
+    )
+
+    assert page.freshness is not None
+    assert page.freshness.source_event_id == f"checkpoint-{projection_type}"
+
+
 @pytest.mark.parametrize(
     ("row", "checkpoint_type", "method_name", "expected_id"),
     [
         (
             _application("application-01", opportunity_id="opportunity-match"),
-            "application",
+            "applications",
             "list_applications",
             "application-01",
         ),
         (
             _relationship("relationship-01", opportunity_id="opportunity-match"),
-            "relationship",
+            "relationships",
             "list_relationships",
             "relationship-01",
         ),
@@ -313,7 +369,10 @@ def test_opportunity_filters_are_applied_in_sql(
         "list_relationships": "relationship_id",
         "list_outreach": "outreach_id",
     }[method_name]
-    item_id = getattr(page.items[0], id_field)
+    page_item = page.items[0]
+    if isinstance(page_item, ProjectedOutreach):
+        page_item = page_item.item
+    item_id = getattr(page_item, id_field)
     assert item_id == expected_id
     assert "opportunity_id" in statements[0].lower()
     assert "where" in statements[0].lower()
@@ -324,13 +383,13 @@ def test_opportunity_filters_are_applied_in_sql(
     [
         (
             _opportunity("opportunity-01", state="qualified"),
-            "opportunity",
+            "opportunities",
             "list_opportunities",
             "qualified",
         ),
         (
             _application("application-01", state="applied"),
-            "application",
+            "applications",
             "list_applications",
             "applied",
         ),
@@ -386,7 +445,7 @@ def test_list_executes_at_most_page_and_checkpoint_queries(
     db_session: Session,
 ) -> None:
     db_session.add_all(
-        [_opportunity("opportunity-01"), _freshness("opportunity")]
+        [_opportunity("opportunity-01"), _freshness("opportunities")]
     )
     db_session.commit()
     statements: list[str] = []
@@ -415,7 +474,7 @@ def test_list_executes_at_most_page_and_checkpoint_queries(
                 "opportunity-01",
                 evidence_refs=[{"evidence_id": "evidence-01"}],
             ),
-            "opportunity",
+            "opportunities",
             "list_opportunities",
         ),
         (
@@ -423,7 +482,7 @@ def test_list_executes_at_most_page_and_checkpoint_queries(
                 "opportunity-01",
                 evidence_refs=[_evidence(raw_content="secret")],
             ),
-            "opportunity",
+            "opportunities",
             "list_opportunities",
         ),
         (
@@ -436,7 +495,7 @@ def test_list_executes_at_most_page_and_checkpoint_queries(
         ),
         (
             _opportunity("opportunity-01", state="not-a-status"),
-            "opportunity",
+            "opportunities",
             "list_opportunities",
         ),
         (
@@ -444,7 +503,7 @@ def test_list_executes_at_most_page_and_checkpoint_queries(
                 "relationship-01",
                 relevance_reason="x" * 501,
             ),
-            "relationship",
+            "relationships",
             "list_relationships",
         ),
     ],
@@ -464,6 +523,52 @@ def test_rows_must_pass_canonical_contract_validation(
         method(first=10, after=None)
 
 
+def test_outreach_detail_and_list_share_validated_row_provenance(
+    db_session: Session,
+) -> None:
+    row = _outreach("outreach-01")
+    row.projected_at = NOW
+    checkpoint = _freshness("outreach")
+    checkpoint.projected_at = NOW + timedelta(minutes=5)
+    db_session.add_all([row, checkpoint])
+    db_session.commit()
+    repository = JobSearchProjectionRepository(db_session)
+
+    detail = repository.get_outreach("outreach-01")
+    page = repository.list_outreach(first=10)
+
+    assert isinstance(detail, ProjectedOutreach)
+    assert isinstance(detail.item, OutreachV1)
+    assert isinstance(detail.freshness, ProjectionFreshnessV1)
+    assert page.items == (detail,)
+    assert detail.freshness.source_event_id == "event-row"
+    assert detail.freshness.source_event_position == "JOBSEARCH:41"
+    assert detail.freshness.projected_at == "2026-07-23T06:00:00Z"
+    assert detail.freshness.lag_ms == 125
+    assert detail.freshness.status == "stale"
+    assert page.freshness is not None
+    assert page.freshness.source_event_id == "event-42"
+    assert page.freshness.projected_at == "2026-07-23T06:05:00Z"
+    with pytest.raises(FrozenInstanceError):
+        detail.item = detail.item
+
+
+@pytest.mark.parametrize("method_name", ["get_outreach", "list_outreach"])
+def test_outreach_with_missing_checkpoint_fails_closed(
+    db_session: Session,
+    method_name: str,
+) -> None:
+    db_session.add(_outreach("outreach-01"))
+    db_session.commit()
+    method = getattr(JobSearchProjectionRepository(db_session), method_name)
+
+    with pytest.raises(ValueError, match="no projection checkpoint"):
+        if method_name == "get_outreach":
+            method("outreach-01")
+        else:
+            method(first=10)
+
+
 def test_detail_methods_return_contracts_and_none_for_unknown_ids(
     db_session: Session,
 ) -> None:
@@ -473,9 +578,9 @@ def test_detail_methods_return_contracts_and_none_for_unknown_ids(
             _application("application-01"),
             _relationship("relationship-01"),
             _outreach("outreach-01"),
-            _freshness("opportunity"),
-            _freshness("application"),
-            _freshness("relationship"),
+            _freshness("opportunities"),
+            _freshness("applications"),
+            _freshness("relationships"),
             _freshness("outreach"),
         ]
     )
@@ -494,7 +599,9 @@ def test_detail_methods_return_contracts_and_none_for_unknown_ids(
         repository.get_relationship("relationship-01"),
         RelationshipV1,
     )
-    assert isinstance(repository.get_outreach("outreach-01"), OutreachV1)
+    outreach = repository.get_outreach("outreach-01")
+    assert isinstance(outreach, ProjectedOutreach)
+    assert isinstance(outreach.item, OutreachV1)
     assert repository.get_opportunity("missing") is None
     assert repository.get_application("missing") is None
     assert repository.get_relationship("missing") is None

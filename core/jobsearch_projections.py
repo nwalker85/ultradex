@@ -43,6 +43,14 @@ class ProjectionPage(Generic[T]):
     next_cursor: str | None
 
 
+@dataclass(frozen=True)
+class ProjectedOutreach:
+    """A validated outreach item paired with its row-level provenance."""
+
+    item: OutreachV1
+    freshness: ProjectionFreshnessV1
+
+
 def _bounded_first(first: int) -> int:
     if isinstance(first, bool) or not isinstance(first, int) or not 1 <= first <= 100:
         raise ValueError("first must be an integer between 1 and 100")
@@ -80,7 +88,7 @@ class JobSearchProjectionRepository:
         )
         if row is None:
             return None
-        return self._opportunity(row, self._checkpoint("opportunity"))
+        return self._opportunity(row, self._checkpoint("opportunities"))
 
     def get_application(self, application_id: str) -> ApplicationV1 | None:
         row = self._session.scalar(
@@ -90,7 +98,7 @@ class JobSearchProjectionRepository:
         )
         if row is None:
             return None
-        return self._application(row, self._checkpoint("application"))
+        return self._application(row, self._checkpoint("applications"))
 
     def get_relationship(self, relationship_id: str) -> RelationshipV1 | None:
         row = self._session.scalar(
@@ -100,15 +108,17 @@ class JobSearchProjectionRepository:
         )
         if row is None:
             return None
-        return self._relationship(row, self._checkpoint("relationship"))
+        return self._relationship(row, self._checkpoint("relationships"))
 
-    def get_outreach(self, outreach_id: str) -> OutreachV1 | None:
+    def get_outreach(self, outreach_id: str) -> ProjectedOutreach | None:
         row = self._session.scalar(
             select(OutreachProjectionDB).where(
                 OutreachProjectionDB.id == outreach_id
             )
         )
-        return None if row is None else self._outreach(row)
+        if row is None:
+            return None
+        return self._outreach(row, self._checkpoint("outreach"))
 
     def list_opportunities(
         self,
@@ -122,7 +132,7 @@ class JobSearchProjectionRepository:
         )
         return self._page(
             model=OpportunityProjectionDB,
-            projection_type="opportunity",
+            projection_type="opportunities",
             first=first,
             after=after,
             filters=filters,
@@ -146,7 +156,7 @@ class JobSearchProjectionRepository:
             )
         return self._page(
             model=ApplicationProjectionDB,
-            projection_type="application",
+            projection_type="applications",
             first=first,
             after=after,
             filters=tuple(filters),
@@ -168,7 +178,7 @@ class JobSearchProjectionRepository:
         )
         return self._page(
             model=RelationshipProjectionDB,
-            projection_type="relationship",
+            projection_type="relationships",
             first=first,
             after=after,
             filters=filters,
@@ -181,7 +191,7 @@ class JobSearchProjectionRepository:
         after: str | None = None,
         status: str | None = None,
         opportunity_id: str | None = None,
-    ) -> ProjectionPage[OutreachV1]:
+    ) -> ProjectionPage[ProjectedOutreach]:
         status = _validate_status(status, OUTREACH_STATUSES_V1)
         filters = []
         if status is not None:
@@ -194,7 +204,7 @@ class JobSearchProjectionRepository:
             first=first,
             after=after,
             filters=tuple(filters),
-            converter=lambda row, _freshness: self._outreach(row),
+            converter=self._outreach,
         )
 
     def _page(
@@ -256,6 +266,7 @@ class JobSearchProjectionRepository:
             OpportunityProjectionDB
             | ApplicationProjectionDB
             | RelationshipProjectionDB
+            | OutreachProjectionDB
         ),
         freshness: ProjectionFreshnessV1 | None,
     ) -> dict[str, object]:
@@ -334,19 +345,27 @@ class JobSearchProjectionRepository:
             }
         )
 
-    @staticmethod
-    def _outreach(row: OutreachProjectionDB) -> OutreachV1:
-        return OutreachV1.from_dict(
-            {
-                "outreach_id": row.id,
-                "opportunity_id": row.opportunity_id,
-                "relationship_id": row.relationship_id,
-                "status": row.state,
-                "channel": row.channel,
-                "message_commitment": row.message_commitment,
-                "approval_contract_id": row.approval_contract_ref,
-                "sent_evidence_ref": row.sent_evidence_ref,
-                "created_at": _timestamp(row.created_at),
-                "updated_at": _timestamp(row.updated_at),
-            }
+    def _outreach(
+        self,
+        row: OutreachProjectionDB,
+        freshness: ProjectionFreshnessV1 | None,
+    ) -> ProjectedOutreach:
+        return ProjectedOutreach(
+            item=OutreachV1.from_dict(
+                {
+                    "outreach_id": row.id,
+                    "opportunity_id": row.opportunity_id,
+                    "relationship_id": row.relationship_id,
+                    "status": row.state,
+                    "channel": row.channel,
+                    "message_commitment": row.message_commitment,
+                    "approval_contract_id": row.approval_contract_ref,
+                    "sent_evidence_ref": row.sent_evidence_ref,
+                    "created_at": _timestamp(row.created_at),
+                    "updated_at": _timestamp(row.updated_at),
+                }
+            ),
+            freshness=ProjectionFreshnessV1.from_dict(
+                self._required_freshness(row, freshness)
+            ),
         )

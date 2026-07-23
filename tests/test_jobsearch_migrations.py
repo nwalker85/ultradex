@@ -1,11 +1,13 @@
 import pytest
 from alembic import command
+from ravenhelm_contracts.jobsearch_v1 import JOBSEARCH_PROJECTION_TYPES_V1
 from sqlalchemy import Integer, String, create_engine, inspect
 
 from core.database import Database
 from core.jobsearch_migrations import alembic_config, run_jobsearch_migrations
 from core.jobsearch_models import (
     JOBSEARCH_PROJECTION_TABLES,
+    JOBSEARCH_PROJECTION_TYPES,
     ApplicationProjectionDB,
     OpportunityProjectionDB,
     OutreachProjectionDB,
@@ -105,6 +107,26 @@ def test_relationship_relevance_summary_uses_contract_maximum(tmp_path):
     assert migrated_type.length == 500
 
 
+def test_relationship_schema_contains_only_canonical_contract_fields(tmp_path):
+    model_columns = set(RelationshipProjectionDB.__table__.columns.keys())
+    engine = create_engine(f"sqlite:///{tmp_path / 'relationship-columns.db'}")
+    run_jobsearch_migrations(str(engine.url))
+    migrated_columns = {
+        column["name"]
+        for column in inspect(engine).get_columns("jobsearch_relationships")
+    }
+
+    assert "relevance_signals" not in model_columns
+    assert "relevance_signals" not in migrated_columns
+
+
+def test_projection_types_match_canonical_frozen_set():
+    assert JOBSEARCH_PROJECTION_TYPES == JOBSEARCH_PROJECTION_TYPES_V1
+    assert JOBSEARCH_PROJECTION_TYPES == frozenset(
+        {"opportunities", "applications", "relationships", "outreach"}
+    )
+
+
 def test_upgrade_head_creates_only_versioned_jobsearch_schema(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
     run_jobsearch_migrations(str(engine.url))
@@ -129,6 +151,16 @@ def test_database_init_preserves_legacy_tables_and_applies_jobsearch_revision(
 ):
     database = Database(f"sqlite:///{tmp_path / 'startup.db'}")
     database.init()
+    tables = set(inspect(database.engine).get_table_names())
+    assert {"operations", "contacts"} <= tables
+    assert set(JOBSEARCH_PROJECTION_TABLES) <= tables
+
+
+def test_database_init_uses_one_connection_for_in_memory_startup():
+    database = Database("sqlite:///:memory:")
+
+    database.init()
+
     tables = set(inspect(database.engine).get_table_names())
     assert {"operations", "contacts"} <= tables
     assert set(JOBSEARCH_PROJECTION_TABLES) <= tables

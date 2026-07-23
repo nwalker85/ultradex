@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+from ravenhelm_contracts.jobsearch_v1 import JOBSEARCH_PROJECTION_TYPES_V1
 from sqlalchemy import BigInteger, Column, DateTime, Float, JSON, String
 
 from .models import Base
@@ -17,14 +18,7 @@ JOBSEARCH_PROJECTION_TABLES: frozenset[str] = frozenset(
     }
 )
 
-JOBSEARCH_PROJECTION_TYPES: frozenset[str] = frozenset(
-    {
-        "opportunity",
-        "application",
-        "relationship",
-        "outreach",
-    }
-)
+JOBSEARCH_PROJECTION_TYPES: frozenset[str] = JOBSEARCH_PROJECTION_TYPES_V1
 
 
 def _utcnow() -> datetime:
@@ -86,7 +80,6 @@ class RelationshipProjectionDB(Base):
     dex_contact_ref = Column(String(255), nullable=False)
     relevance_score = Column(Float, nullable=True)
     relevance_reason = Column(String(500), nullable=True)
-    relevance_signals = Column(JSON, nullable=False, default=list)
     source_event_id = Column(String(128), nullable=False)
     source_event_position = Column(String(128), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)

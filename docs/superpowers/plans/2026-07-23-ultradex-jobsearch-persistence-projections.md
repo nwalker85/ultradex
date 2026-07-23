@@ -61,9 +61,10 @@
 - Produces: `run_jobsearch_migrations(database_url: str, *, connection: Connection | None = None) -> None`.
 - Produces row models: `OpportunityProjectionDB`, `ApplicationProjectionDB`, `RelationshipProjectionDB`, `OutreachProjectionDB`, `ProjectionCheckpointDB`.
 - Produces constants: `JOBSEARCH_PROJECTION_TABLES: frozenset[str]` and `JOBSEARCH_PROJECTION_TYPES: frozenset[str]`.
-- `Database.init()` must create legacy tables only and then call `run_jobsearch_migrations(self.database_url)`.
+- `Database.init()` must create legacy tables and run the job-search migration
+  through one `self.engine` connection and transaction.
 
-- [ ] **Step 1: Write the failing migration tests**
+- [x] **Step 1: Write the failing migration tests**
 
   Add tests that:
 
@@ -100,7 +101,7 @@
       assert set(JOBSEARCH_PROJECTION_TABLES) <= tables
   ```
 
-- [ ] **Step 2: Run the migration tests and verify RED**
+- [x] **Step 2: Run the migration tests and verify RED**
 
   Run:
 
@@ -110,7 +111,7 @@
 
   Expected: collection fails because `core.jobsearch_migrations` and the projection row models do not exist.
 
-- [ ] **Step 3: Define focused SQLAlchemy projection models**
+- [x] **Step 3: Define focused SQLAlchemy projection models**
 
   Define the following table responsibilities in `core/jobsearch_models.py`:
 
@@ -122,7 +123,7 @@
 
   Use `Base` from `core.models`, explicit string lengths, `DateTime(timezone=True)`, JSON arrays, indexes for state/opportunity filters, and no cross-table foreign keys because replayed disposable projections may arrive out of order.
 
-- [ ] **Step 4: Add the Alembic environment and revision**
+- [x] **Step 4: Add the Alembic environment and revision**
 
   Pin `alembic==1.18.5`. Configure `migrations/env.py` with:
 
@@ -152,7 +153,7 @@
 
   The revision must create and index exactly the five job-search tables and downgrade them in reverse dependency order. It must not create, alter, drop, or stamp legacy tables.
 
-- [ ] **Step 5: Add programmatic migration startup**
+- [x] **Step 5: Add programmatic migration startup**
 
   Implement:
 
@@ -174,9 +175,14 @@
       command.upgrade(config, "head")
   ```
 
-  In `Database.init()`, pass only tables whose names are not in `JOBSEARCH_PROJECTION_TABLES` to `Base.metadata.create_all`, then upgrade the versioned job-search schema. This preserves the legacy bootstrap path without allowing `create_all` to bypass the new revision.
+  In `Database.init()`, open one `self.engine.begin()` connection, pass only
+  tables whose names are not in `JOBSEARCH_PROJECTION_TABLES` to
+  `Base.metadata.create_all`, and then upgrade the versioned job-search schema
+  through that same connection. This preserves the legacy bootstrap path,
+  supports in-memory SQLite startup, and prevents `create_all` from bypassing
+  the new revision.
 
-- [ ] **Step 6: Run migration and baseline tests**
+- [x] **Step 6: Run migration and baseline tests**
 
   Run:
 
@@ -186,7 +192,7 @@
 
   Expected: all selected tests pass.
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
   ```bash
   git add alembic.ini migrations core/jobsearch_models.py core/jobsearch_migrations.py core/database.py core/__init__.py requirements.txt tests/test_jobsearch_migrations.py
@@ -205,12 +211,14 @@
 
 **Interfaces:**
 - Produces: `ProjectionPage[T]` with `items: tuple[T, ...]`, `freshness: ProjectionFreshnessV1 | None`, and `next_cursor: str | None`.
+- Produces: immutable `ProjectedOutreach` with `item: OutreachV1` and
+  `freshness: ProjectionFreshnessV1`.
 - Produces: `JobSearchProjectionRepository(session: Session)`.
 - Produces detail methods `get_opportunity`, `get_application`, `get_relationship`, `get_outreach`.
 - Produces list methods `list_opportunities`, `list_applications`, `list_relationships`, `list_outreach`, each accepting `first: int`, `after: str | None`, and only its documented bounded filters.
 - Consumes canonical `OpportunityV1`, `ApplicationV1`, `RelationshipV1`, `OutreachV1`, and `ProjectionFreshnessV1` from `ravenhelm_contracts`.
 
-- [ ] **Step 1: Write the failing repository tests**
+- [x] **Step 1: Write the failing repository tests**
 
   Seed rows directly and prove:
 
@@ -238,7 +246,7 @@
   - corrupt evidence objects, raw-content keys, malformed commitments, invalid statuses, and overlong summaries fail canonical `from_dict` validation before a result is returned.
   - list execution is two statements at most: one page query and one checkpoint query.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
   Run:
 
@@ -248,7 +256,7 @@
 
   Expected: collection fails because `JobSearchProjectionRepository` does not exist.
 
-- [ ] **Step 3: Implement row-to-contract conversion**
+- [x] **Step 3: Implement row-to-contract conversion**
 
   Build exact dictionaries from row columns and validate them with:
 
@@ -262,15 +270,15 @@
 
   Convert database datetimes to UTC RFC 3339 strings ending in `Z`. Do not return row objects, raw JSON, or unvalidated dictionaries from the repository.
 
-- [ ] **Step 4: Implement deterministic bounded reads**
+- [x] **Step 4: Implement deterministic bounded reads**
 
   Use a shared `_bounded_first(first: int) -> int`, select `first + 1` rows ordered by primary key ascending, return at most `first`, and set `next_cursor` only when the extra row exists. Validate filters against the canonical frozen status sets. Detail methods return `None` for unknown identifiers.
 
-- [ ] **Step 5: Implement honest checkpoint lookup**
+- [x] **Step 5: Implement honest checkpoint lookup**
 
   Load a checkpoint by exact projection type. Return `None` when absent. When present, convert through `ProjectionFreshnessV1.from_dict`; do not recompute lag at request time or rewrite stored status.
 
-- [ ] **Step 6: Run repository plus migration tests**
+- [x] **Step 6: Run repository plus migration tests**
 
   Run:
 
@@ -280,7 +288,7 @@
 
   Expected: all selected tests pass.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
   ```bash
   git add core/jobsearch_projections.py core/__init__.py tests/test_jobsearch_projection_repository.py
@@ -310,7 +318,7 @@
   - `outreach(first: Int = 25, after: String, status: String, opportunityId: String): OutreachPage!`
 - Each page produces `items`, nullable `freshness`, and nullable `nextCursor`.
 
-- [ ] **Step 1: Write failing GraphQL tests**
+- [x] **Step 1: Write failing GraphQL tests**
 
   Execute Strawberry schema queries against the SQLite session and prove:
 
@@ -341,7 +349,7 @@
   - `schema._schema.mutation_type is None`;
   - the authenticated mounted `/api/graphql` route can read one job-search projection.
 
-- [ ] **Step 2: Run the GraphQL test and verify RED**
+- [x] **Step 2: Run the GraphQL test and verify RED**
 
   Run:
 
@@ -351,15 +359,15 @@
 
   Expected: GraphQL validation fails because the job-search query fields do not exist.
 
-- [ ] **Step 3: Define explicit Strawberry types**
+- [x] **Step 3: Define explicit Strawberry types**
 
   Add focused types for evidence references, freshness, application stages, all four entities, and four page wrappers. Conversion methods must accept only canonical contract dataclasses returned by the repository. Use Strawberry field names and default camel-case serialization; do not use generic `JSON` for job-search domain fields.
 
-- [ ] **Step 4: Wire repository-backed query resolvers**
+- [x] **Step 4: Wire repository-backed query resolvers**
 
   Instantiate `JobSearchProjectionRepository(info.context["db"])` inside each resolver and delegate validation, pagination, filtering, conversion, and checkpoint loading to the repository. Resolver bodies must not write, commit, enqueue, send, scrape, or call external systems.
 
-- [ ] **Step 5: Run focused GraphQL and authentication tests**
+- [x] **Step 5: Run focused GraphQL and authentication tests**
 
   Run:
 
@@ -369,7 +377,7 @@
 
   Expected: all selected tests pass and the schema still has no mutation root.
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
   ```bash
   git add api/graphql/jobsearch_types.py api/graphql/schema.py tests/test_graphql_jobsearch.py
@@ -443,7 +451,7 @@
 
   Verification evidence recorded on 2026-07-23:
 
-  - `python -m pytest -q`: 90 passed, one pre-existing strict MCP XFAIL.
+  - `python -m pytest -q`: 103 passed, one pre-existing strict MCP XFAIL.
   - `python -m compileall -q api core sdk ultradex_sdk tests migrations`: exited
     zero without output.
   - `python -m build`: built `ultradex_sdk-1.1.0.tar.gz` and
@@ -455,7 +463,15 @@
     without output.
   - `python -m pytest tests/test_jobsearch_migrations.py
     tests/test_jobsearch_projection_repository.py tests/test_graphql_jobsearch.py
-    -q`: 47 passed.
+    -q`: 60 passed.
+  - Final-review RED tests independently reproduced all four gaps: in-memory
+    startup omitted all five versioned tables; canonical checkpoint parity/page
+    lookup checks failed for the three singular keys; outreach lacked
+    item-level freshness and did not fail closed without a checkpoint; and
+    `relevance_signals` remained in both ORM and migrated schema.
+  - Final-review focused GREEN reruns passed 1 startup test, 5 canonical-key
+    tests, 6 outreach provenance/fail-closed tests, and 1 relationship-schema
+    test before the 60-test combined JS-U02 gate.
 
 - [ ] **Step 5: Obtain independent whole-unit review**
 

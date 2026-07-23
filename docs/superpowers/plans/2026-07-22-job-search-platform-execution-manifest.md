@@ -60,7 +60,7 @@ JS-C01 control-surface/job-search contracts
 | JS-O01 | PR 6 open; green | Python instrumentation PR is open with required checks green. |
 | JS-G01 | pending | New-repository lifecycle work has not started. |
 | JS-U01 | PR 2 open; reviewed | Independent review is clear; authentication, executable worker registry, atomic scoped idempotency, governed 503 handles, SDK delegation, bounded GraphQL reads, honest nullable freshness, shared OpenAPI/runtime validation, compile, build, and compatibility wheel checks pass. |
-| JS-U02 | implemented locally; pending final review/PR | Versioned migrations, contract-backed persistence reads, and a read-only GraphQL projection surface are implemented on the stacked branch. Verification passes with 90 tests and one pre-existing strict MCP XFAIL; the focused JS-U02 suite passes all 47 tests. Compile, wheel/sdist build, dependency, and diff checks pass. Final whole-unit review and PR publication remain outstanding. |
+| JS-U02 | implemented locally; pending final review/PR | Versioned migrations, contract-backed persistence reads, and a read-only GraphQL projection surface are implemented on the stacked branch. Final-review fixes now preserve same-connection in-memory startup, canonical checkpoint keys, validated outreach item provenance, and exact `RelationshipV1` schema scope. Verification passes with 103 tests and one pre-existing strict MCP XFAIL; the focused JS-U02 suite passes all 60 tests. Compile, wheel/sdist build, dependency, and diff checks pass. Final whole-unit review and PR publication remain outstanding. |
 | JS-U03–JS-U08 | pending | Dependency boundaries remain frozen below; no implementation has started in these units. |
 
 ## Orchestration rules

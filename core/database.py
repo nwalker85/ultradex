@@ -29,8 +29,12 @@ class Database:
             for table in Base.metadata.sorted_tables
             if table.name not in JOBSEARCH_PROJECTION_TABLES
         ]
-        Base.metadata.create_all(self.engine, tables=legacy_tables)
-        run_jobsearch_migrations(self.database_url)
+        with self.engine.begin() as connection:
+            Base.metadata.create_all(connection, tables=legacy_tables)
+            run_jobsearch_migrations(
+                self.database_url,
+                connection=connection,
+            )
     
     def get_session(self) -> Session:
         """Get database session"""

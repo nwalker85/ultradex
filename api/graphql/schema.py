@@ -203,7 +203,7 @@ class Query:
         return (
             None
             if projection is None
-            else Outreach.from_contract(projection)
+            else Outreach.from_projection(projection)
         )
 
     @strawberry.field

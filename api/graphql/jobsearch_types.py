@@ -10,12 +10,11 @@ from ravenhelm_contracts import (
     ApplicationV1,
     JobSearchEvidenceReferenceV1,
     OpportunityV1,
-    OutreachV1,
     ProjectionFreshnessV1,
     RelationshipV1,
 )
 
-from core import ProjectionPage
+from core import ProjectedOutreach, ProjectionPage
 
 
 def _datetime(value: str) -> datetime:
@@ -200,11 +199,13 @@ class Outreach:
     message_commitment: str
     approval_contract_id: str | None
     sent_evidence_ref: str | None
+    freshness: ProjectionFreshness
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_contract(cls, contract: OutreachV1) -> "Outreach":
+    def from_projection(cls, projection: ProjectedOutreach) -> "Outreach":
+        contract = projection.item
         return cls(
             outreach_id=contract.outreach_id,
             opportunity_id=contract.opportunity_id,
@@ -214,6 +215,7 @@ class Outreach:
             message_commitment=contract.message_commitment,
             approval_contract_id=contract.approval_contract_id,
             sent_evidence_ref=contract.sent_evidence_ref,
+            freshness=ProjectionFreshness.from_contract(projection.freshness),
             created_at=_datetime(contract.created_at),
             updated_at=_datetime(contract.updated_at),
         )
@@ -294,10 +296,10 @@ class OutreachPage:
     @classmethod
     def from_page(
         cls,
-        page: ProjectionPage[OutreachV1],
+        page: ProjectionPage[ProjectedOutreach],
     ) -> "OutreachPage":
         return cls(
-            items=[Outreach.from_contract(item) for item in page.items],
+            items=[Outreach.from_projection(item) for item in page.items],
             freshness=(
                 None
                 if page.freshness is None

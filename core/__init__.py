@@ -31,7 +31,11 @@ from .jobsearch_models import (
     ProjectionCheckpointDB,
     RelationshipProjectionDB,
 )
-from .jobsearch_projections import JobSearchProjectionRepository, ProjectionPage
+from .jobsearch_projections import (
+    JobSearchProjectionRepository,
+    ProjectedOutreach,
+    ProjectionPage,
+)
 from .dex_client import DexClient
 from .claude_client import ClaudeClient
 from .contact_analyzer import ContactAnalyzer
@@ -82,6 +86,7 @@ __all__ = [
     "OutreachProjectionDB",
     "ProjectionCheckpointDB",
     "JobSearchProjectionRepository",
+    "ProjectedOutreach",
     "ProjectionPage",
     "alembic_config",
     "run_jobsearch_migrations",

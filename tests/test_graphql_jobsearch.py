@@ -103,7 +103,6 @@ def _relationship(relationship_id: str) -> RelationshipProjectionDB:
         dex_contact_ref="dex-contact-01",
         relevance_score=88,
         relevance_reason="Former colleague at the employer.",
-        relevance_signals=["former-colleague", "same-role-family"],
         source_event_id=f"event-{relationship_id}",
         source_event_position="JOBSEARCH:41",
         projected_at=NOW,
@@ -144,7 +143,7 @@ async def test_opportunities_are_bounded_canonical_and_do_not_query_per_item(
                 employer="Archived Corp",
                 status="archived",
             ),
-            _checkpoint("opportunity"),
+            _checkpoint("opportunities"),
         ]
     )
     db_session.commit()
@@ -255,7 +254,7 @@ async def test_application_detail_and_list_preserve_stage_and_artifact_order(
     db_session.add_all(
         [
             _application("application-01"),
-            _checkpoint("application"),
+            _checkpoint("applications"),
         ]
     )
     db_session.commit()
@@ -316,7 +315,7 @@ async def test_relationship_and_outreach_expose_only_privacy_safe_fields(
         [
             _relationship("relationship-01"),
             _outreach("outreach-01"),
-            _checkpoint("relationship"),
+            _checkpoint("relationships"),
             _checkpoint("outreach"),
         ]
     )
@@ -343,11 +342,25 @@ async def test_relationship_and_outreach_expose_only_privacy_safe_fields(
           outreachItem(id: "outreach-01") {
             outreachId
             messageCommitment
+            freshness {
+              sourceEventId
+              sourceEventPosition
+              projectedAt
+              lagMs
+              status
+            }
           }
           outreach(status: "pending_approval", opportunityId: "opportunity-01") {
             items {
               outreachId
               messageCommitment
+              freshness {
+                sourceEventId
+                sourceEventPosition
+                projectedAt
+                lagMs
+                status
+              }
             }
             freshness { sourceEventPosition status }
           }
@@ -355,7 +368,13 @@ async def test_relationship_and_outreach_expose_only_privacy_safe_fields(
             fields { name }
           }
           outreachType: __type(name: "Outreach") {
-            fields { name }
+            fields {
+              name
+              type {
+                kind
+                ofType { kind name }
+              }
+            }
           }
         }
         """,
@@ -383,6 +402,13 @@ async def test_relationship_and_outreach_expose_only_privacy_safe_fields(
     assert result.data["outreachItem"] == {
         "outreachId": "outreach-01",
         "messageCommitment": VALID_COMMITMENT,
+        "freshness": {
+            "sourceEventId": "event-outreach-01",
+            "sourceEventPosition": "JOBSEARCH:41",
+            "projectedAt": "2026-07-23T06:00:00+00:00",
+            "lagMs": 125,
+            "status": "stale",
+        },
     }
     assert result.data["outreach"]["items"] == [result.data["outreachItem"]]
 
@@ -411,8 +437,17 @@ async def test_relationship_and_outreach_expose_only_privacy_safe_fields(
         "messageCommitment",
         "approvalContractId",
         "sentEvidenceRef",
+        "freshness",
         "createdAt",
         "updatedAt",
+    }
+    outreach_field_types = {
+        field["name"]: field["type"]
+        for field in result.data["outreachType"]["fields"]
+    }
+    assert outreach_field_types["freshness"] == {
+        "kind": "NON_NULL",
+        "ofType": {"kind": "OBJECT", "name": "ProjectionFreshness"},
     }
     assert outreach_fields.isdisjoint(
         {"body", "subject", "prompt", "completion", "note", "draftText"}
@@ -444,6 +479,40 @@ async def test_empty_unprojected_pages_have_unknown_freshness(db_session):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "query",
+    [
+        """
+        query {
+          outreachItem(id: "outreach-01") {
+            outreachId
+            freshness { sourceEventId }
+          }
+        }
+        """,
+        """
+        query {
+          outreach {
+            items {
+              outreachId
+              freshness { sourceEventId }
+            }
+          }
+        }
+        """,
+    ],
+)
+async def test_outreach_without_checkpoint_fails_closed(db_session, query):
+    db_session.add(_outreach("outreach-01"))
+    db_session.commit()
+
+    result = await schema.execute(query, context_value={"db": db_session})
+
+    assert result.errors
+    assert "no projection checkpoint" in str(result.errors[0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "field",
     ["opportunities", "applications", "relationships", "outreach"],
 )
@@ -466,7 +535,7 @@ async def test_authenticated_graphql_route_reads_jobsearch_projection(db_session
     db_session.add_all(
         [
             _opportunity("opportunity-http", employer="HTTP Corp"),
-            _checkpoint("opportunity"),
+            _checkpoint("opportunities"),
         ]
     )
     db_session.commit()
