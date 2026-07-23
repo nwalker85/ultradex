@@ -29,6 +29,8 @@ Current compatibility commands:
 Both return `202 Accepted` with the shared Ravenhelm `ContractHandleV1`. The
 `Idempotency-Key` header deduplicates submissions. A legacy query-string `limit`
 remains supported for analyze clients; new clients send `{"limit": N}` as JSON.
+If queue dispatch fails after durable acceptance, the same schema is returned at
+`503` with status `failed`; the SDK preserves that governed outcome.
 All domain surfaces require a bearer credential. Actor identity is derived from the
 validated credential; caller-supplied `X-Actor-Id` values are ignored.
 

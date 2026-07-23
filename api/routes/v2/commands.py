@@ -22,14 +22,23 @@ from ...dependencies import get_redis
 from ...auth import AuthenticatedPrincipal, require_command_principal
 
 router = APIRouter()
+CONTRACT_HANDLE_SCHEMA = json.loads(
+    CONTROL_SURFACE_V1_SCHEMA_PATHS["contract_handle"].read_text()
+)
 CONTRACT_HANDLE_RESPONSE = {
     202: {
         "description": "Command accepted and bound to a governed contract handle.",
         "content": {
             "application/json": {
-                "schema": json.loads(
-                    CONTROL_SURFACE_V1_SCHEMA_PATHS["contract_handle"].read_text()
-                )
+                "schema": CONTRACT_HANDLE_SCHEMA,
+            }
+        },
+    },
+    503: {
+        "description": "Command was recorded but dispatch failed; body is its failed contract handle.",
+        "content": {
+            "application/json": {
+                "schema": CONTRACT_HANDLE_SCHEMA,
             }
         },
     }

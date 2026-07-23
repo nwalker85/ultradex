@@ -44,11 +44,20 @@ class UltradexClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
+    @staticmethod
+    def _contract_handle_response(response: httpx.Response) -> ContractHandleV1:
+        """Return governed success/failure handles before generic HTTP errors."""
+        if response.status_code in {202, 503}:
+            return ContractHandleV1.from_dict(response.json())
+        response.raise_for_status()
+        return ContractHandleV1.from_dict(response.json())
+
     async def submit_analyze_contacts(
         self,
         limit: Optional[int] = None,
         idempotency_key: Optional[str] = None,
         actor_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
     ) -> ContractHandleV1:
         """Submit an analyze command and return its governed handle."""
@@ -58,21 +67,23 @@ class UltradexClient:
         # Kept as a source-compatible argument for 1.x callers. The server
         # derives actor identity from the bearer credential and ignores spoofable
         # caller identity headers.
+        if delegation_id:
+            headers["X-Delegation-Id"] = delegation_id
         if correlation_id:
             headers["X-Correlation-Id"] = correlation_id
 
         response = await self.client.post(
             "/api/v2/contacts/commands/analyze",
-            json={"limit": limit} if limit else {},
+            json={"limit": limit} if limit is not None else {},
             headers=headers
         )
-        response.raise_for_status()
-        return ContractHandleV1.from_dict(response.json())
+        return self._contract_handle_response(response)
 
     async def submit_sync_contacts(
         self,
         idempotency_key: Optional[str] = None,
         actor_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
     ) -> ContractHandleV1:
         """Submit a sync command and return its governed handle."""
@@ -80,6 +91,8 @@ class UltradexClient:
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
         # ``actor_id`` remains source-compatible but is intentionally not sent.
+        if delegation_id:
+            headers["X-Delegation-Id"] = delegation_id
         if correlation_id:
             headers["X-Correlation-Id"] = correlation_id
 
@@ -88,14 +101,14 @@ class UltradexClient:
             json={},
             headers=headers
         )
-        response.raise_for_status()
-        return ContractHandleV1.from_dict(response.json())
+        return self._contract_handle_response(response)
 
     async def analyze_contacts(
         self,
         limit: Optional[int] = None,
         idempotency_key: Optional[str] = None,
         actor_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
         poll_timeout: int = 600
     ) -> Dict[str, Any]:
@@ -104,6 +117,7 @@ class UltradexClient:
             limit=limit,
             idempotency_key=idempotency_key,
             actor_id=actor_id,
+            delegation_id=delegation_id,
             correlation_id=correlation_id,
         )
         return await self._poll_operation(handle.operation_id, poll_timeout)
@@ -112,6 +126,7 @@ class UltradexClient:
         self,
         idempotency_key: Optional[str] = None,
         actor_id: Optional[str] = None,
+        delegation_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
         poll_timeout: int = 600
     ) -> Dict[str, Any]:
@@ -119,6 +134,7 @@ class UltradexClient:
         handle = await self.submit_sync_contacts(
             idempotency_key=idempotency_key,
             actor_id=actor_id,
+            delegation_id=delegation_id,
             correlation_id=correlation_id,
         )
         return await self._poll_operation(handle.operation_id, poll_timeout)

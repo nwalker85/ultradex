@@ -2,36 +2,46 @@
 
 from datetime import datetime, timedelta
 from typing import Optional
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 from .models import EventType, IdempotencyKeyDB, OperationEventDB
 
 
 class IdempotencyService:
     @staticmethod
-    def record_key(
+    def claim_key(
         db: Session,
         key: str,
         operation_id: str,
-        ttl_hours: int = 24
-    ) -> IdempotencyKeyDB:
-        """
-        Record an idempotency key mapping to operation_id.
-
-        Args:
-            db: Database session
-            key: The idempotency key (unique)
-            operation_id: The operation this key belongs to
-            ttl_hours: Time to live in hours
-        """
-        idempotency = IdempotencyKeyDB(
-            key=key,
-            operation_id=operation_id,
-            expires_at=datetime.now() + timedelta(hours=ttl_hours)
+        ttl_hours: int = 24,
+    ) -> bool:
+        """Atomically claim a new or expired key inside the caller transaction."""
+        now = datetime.now()
+        values = {
+            "key": key,
+            "operation_id": operation_id,
+            "created_at": now,
+            "expires_at": now + timedelta(hours=ttl_hours),
+        }
+        dialect = db.get_bind().dialect.name
+        if dialect == "sqlite":
+            statement = sqlite_insert(IdempotencyKeyDB).values(**values)
+        elif dialect == "postgresql":
+            statement = postgresql_insert(IdempotencyKeyDB).values(**values)
+        else:  # pragma: no cover - supported deployments are PostgreSQL/SQLite
+            raise RuntimeError(f"Unsupported idempotency dialect: {dialect}")
+        statement = statement.on_conflict_do_update(
+            index_elements=[IdempotencyKeyDB.key],
+            set_={
+                "operation_id": operation_id,
+                "created_at": now,
+                "expires_at": values["expires_at"],
+            },
+            where=IdempotencyKeyDB.expires_at <= now,
         )
-        db.add(idempotency)
-        db.commit()
-        db.refresh(idempotency)
-        return idempotency
+        result = db.execute(statement)
+        return result.rowcount == 1
 
     @staticmethod
     def get_cached_operation(db: Session, key: str) -> Optional[str]:

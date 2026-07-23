@@ -90,51 +90,58 @@ class GatewayService:
                     f"Actor {command.actor_id} not authorized for {command.command}"
                 )
 
-        # 2. A caller-supplied key is valid only for the exact command envelope.
-        if command.idempotency_key:
-            cached = IdempotencyService.get_cached_binding(
+        # 2. Persist operation, key binding, and accepted event atomically.
+        fingerprint = command.idempotency_fingerprint()
+        try:
+            operation = OperationService.create_operation(
                 db,
-                command.idempotency_key,
+                command=command.command,
+                correlation_id=command.correlation_id,
+                commit=False,
             )
-            if cached:
-                cached_op_id, cached_fingerprint = cached
-                if cached_fingerprint != command.idempotency_fingerprint():
-                    raise IdempotencyConflictError(
-                        "Idempotency key is already bound to another command envelope"
+            if command.idempotency_key:
+                claimed = IdempotencyService.claim_key(
+                    db,
+                    command.idempotency_key,
+                    operation.id,
+                )
+                if not claimed:
+                    cached = IdempotencyService.get_cached_binding(
+                        db,
+                        command.idempotency_key,
                     )
-                operation = OperationService.get_operation(db, cached_op_id)
-                if operation:
-                    return operation
+                    if cached:
+                        cached_op_id, cached_fingerprint = cached
+                        cached_operation = OperationService.get_operation(db, cached_op_id)
+                    else:
+                        cached_fingerprint = None
+                        cached_operation = None
+                    db.rollback()
+                    if cached_fingerprint != fingerprint or cached_operation is None:
+                        raise IdempotencyConflictError(
+                            "Idempotency key is already bound to another command envelope"
+                        )
+                    return cached_operation
 
-        # 3. Create operation record (pending status)
-        operation = OperationService.create_operation(
-            db,
-            command=command.command,
-            correlation_id=command.correlation_id
-        )
-
-        # 4. Record idempotency key
-        if command.idempotency_key:
-            IdempotencyService.record_key(
+            EventProducer.emit(
                 db,
-                command.idempotency_key,
-                operation.id
+                EventType.OPERATION_ACCEPTED,
+                operation.id,
+                {
+                    "command": command.command,
+                    "actor_id": command.actor_id,
+                    "delegation_id": command.delegation_id,
+                    "idempotency_fingerprint": fingerprint,
+                },
+                commit=False,
             )
+            db.commit()
+            db.refresh(operation)
+        except Exception:
+            db.rollback()
+            raise
 
-        # 5. Emit operation.accepted event
-        EventProducer.emit(
-            db,
-            EventType.OPERATION_ACCEPTED,
-            operation.id,
-            {
-                "command": command.command,
-                "actor_id": command.actor_id,
-                "delegation_id": command.delegation_id,
-                "idempotency_fingerprint": command.idempotency_fingerprint(),
-            }
-        )
-
-        # 6. Dispatch to ARQ queue
+        # 3. Dispatch to ARQ queue after durable acceptance.
         task_name = f"{command.command}_task"
 
         try:
@@ -160,7 +167,7 @@ class GatewayService:
                 raise RuntimeError("Failed operation disappeared") from error
             raise QueueDispatchError(failed) from error
 
-        # 7. Return operation details for polling
+        # 4. Return operation details for polling
         return OperationResponse(
             id=operation.id,
             correlation_id=operation.correlation_id,

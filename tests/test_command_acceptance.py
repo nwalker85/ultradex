@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from types import SimpleNamespace
 
@@ -11,7 +11,7 @@ from ravenhelm_contracts import CONTROL_SURFACE_V1_SCHEMA_PATHS, ContractHandleV
 from api.dependencies import get_redis
 from api.main import app
 from api.routes.v2.commands import _accepted_handle
-from core import get_db, OperationEventDB
+from core import get_db, IdempotencyKeyDB, OperationEventDB
 from tests.conftest import FailingRedis
 
 
@@ -98,6 +98,10 @@ def test_openapi_projects_the_shared_contract_handle_schema():
         CONTROL_SURFACE_V1_SCHEMA_PATHS["contract_handle"].read_text()
     )
     assert response_schema == shared_schema
+    failed_schema = app.openapi()["paths"][
+        "/api/v2/contacts/commands/analyze"
+    ]["post"]["responses"]["503"]["content"]["application/json"]["schema"]
+    assert failed_schema == shared_schema
 
 
 def test_contract_handle_helper_enforces_the_shared_runtime_validator():
@@ -149,6 +153,31 @@ async def test_idempotency_key_is_bound_to_actor_command_and_parameters(api_clie
     )
     assert conflicting.status_code == 409
     assert conflicting.json()["detail"]["code"] == "idempotency_conflict"
+    assert len(redis.enqueued) == 1
+
+
+@pytest.mark.asyncio
+async def test_expired_idempotency_key_is_atomically_replaced(api_client):
+    client, redis, db = api_client
+    db.add(
+        IdempotencyKeyDB(
+            key="expired-key",
+            operation_id="old-operation",
+            expires_at=datetime.now() - timedelta(seconds=1),
+        )
+    )
+    db.commit()
+
+    response = await client.post(
+        "/api/v2/contacts/commands/sync",
+        headers={"Idempotency-Key": "expired-key"},
+    )
+
+    assert response.status_code == 202
+    handle = ContractHandleV1.from_dict(response.json())
+    binding = db.get(IdempotencyKeyDB, "expired-key")
+    assert binding.operation_id == handle.operation_id
+    assert binding.operation_id != "old-operation"
     assert len(redis.enqueued) == 1
 
 

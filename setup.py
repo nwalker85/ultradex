@@ -15,7 +15,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/nwalker85/ultradex",
     packages=["sdk", "ultradex_sdk"],
-    package_data={"sdk": ["py.typed"]},
+    package_data={"sdk": ["py.typed"], "ultradex_sdk": ["py.typed"]},
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.11",

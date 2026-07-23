@@ -37,6 +37,7 @@ def test_built_wheel_preserves_sdk_compatibility_without_server_packages(tmp_pat
     assert "sdk/__init__.py" in paths
     assert "sdk/ultradex_sdk.py" in paths
     assert "sdk/py.typed" in paths
+    assert "ultradex_sdk/py.typed" in paths
     assert not any(path.startswith("mcp/") for path in paths)
     assert not any(path.startswith("cli/") for path in paths)
 

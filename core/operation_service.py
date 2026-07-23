@@ -11,7 +11,9 @@ class OperationService:
     def create_operation(
         db: Session,
         command: str,
-        correlation_id: str = None
+        correlation_id: str = None,
+        *,
+        commit: bool = True,
     ) -> OperationDB:
         """Create a new operation record"""
         operation = OperationDB(
@@ -21,8 +23,9 @@ class OperationService:
             status=OperationStatus.PENDING
         )
         db.add(operation)
-        db.commit()
-        db.refresh(operation)
+        if commit:
+            db.commit()
+            db.refresh(operation)
         return operation
 
     @staticmethod

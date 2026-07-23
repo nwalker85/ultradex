@@ -12,7 +12,9 @@ class EventProducer:
         db: Session,
         event_type: EventType,
         operation_id: str,
-        payload: Optional[dict] = None
+        payload: Optional[dict] = None,
+        *,
+        commit: bool = True,
     ) -> OperationEventDB:
         """
         Emit an event to the audit trail.
@@ -30,8 +32,9 @@ class EventProducer:
             payload=payload or {}
         )
         db.add(event)
-        db.commit()
-        db.refresh(event)
+        if commit:
+            db.commit()
+            db.refresh(event)
         return event
 
     @staticmethod

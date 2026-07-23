@@ -44,6 +44,38 @@ async def test_submit_analyze_returns_typed_handle_and_preserves_headers():
 
 
 @pytest.mark.asyncio
+async def test_submit_returns_governed_failed_handle_from_queue_outage():
+    failed = accepted_handle("op-failed")
+    failed["status"] = "failed"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json=failed)
+
+    client = UltradexClient(transport=httpx.MockTransport(handler))
+    handle = await client.submit_sync_contacts()
+    await client.close()
+
+    assert handle.status == "failed"
+    assert handle.operation_id == "op-failed"
+
+
+@pytest.mark.asyncio
+async def test_submit_preserves_delegation_and_zero_limit():
+    seen: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(202, json=accepted_handle())
+
+    client = UltradexClient(transport=httpx.MockTransport(handler))
+    await client.submit_analyze_contacts(limit=0, delegation_id="delegation:1")
+    await client.close()
+
+    assert json.loads(seen[0].content) == {"limit": 0}
+    assert seen[0].headers["X-Delegation-Id"] == "delegation:1"
+
+
+@pytest.mark.asyncio
 async def test_submit_drops_spoofable_actor_and_preserves_correlation_header():
     seen: list[httpx.Request] = []
 

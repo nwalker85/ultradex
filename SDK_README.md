@@ -27,6 +27,7 @@ async with UltradexClient(
     handle: ContractHandleV1 = await client.submit_analyze_contacts(
         limit=50,
         idempotency_key="analysis-2026-07-22",
+        delegation_id=None,
     )
 
     print(handle.contract_id)
@@ -37,8 +38,12 @@ async with UltradexClient(
 Available non-blocking methods:
 
 ```python
-await client.submit_analyze_contacts(limit=None, idempotency_key=None)
-await client.submit_sync_contacts(idempotency_key=None)
+await client.submit_analyze_contacts(
+    limit=None,
+    idempotency_key=None,
+    delegation_id=None,
+)
+await client.submit_sync_contacts(idempotency_key=None, delegation_id=None)
 ```
 
 Malformed server handles fail shared contract validation instead of degrading into
@@ -87,7 +92,8 @@ Do not use these wrappers from an already-running event loop.
 
 ## Errors
 
-- HTTP failures raise `httpx.HTTPStatusError`.
+- A queue-dispatch `503` carrying a valid failed `ContractHandleV1` returns that
+  governed handle; other HTTP failures raise `httpx.HTTPStatusError`.
 - Invalid contract handles raise `ValueError` from the shared contract package.
 - GraphQL response errors raise `RuntimeError`.
 - Poll timeouts raise `TimeoutError`.
