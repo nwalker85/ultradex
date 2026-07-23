@@ -37,11 +37,15 @@ class EventProducer:
     @staticmethod
     def get_events(
         db: Session,
-        operation_id: str
+        operation_id: str,
+        limit: Optional[int] = None,
     ) -> list[OperationEventDB]:
         """
         Get all events for an operation in chronological order.
         """
-        return db.query(OperationEventDB).filter(
+        query = db.query(OperationEventDB).filter(
             OperationEventDB.operation_id == operation_id
-        ).order_by(OperationEventDB.timestamp.asc()).all()
+        ).order_by(OperationEventDB.timestamp.asc(), OperationEventDB.id.asc())
+        if limit is not None:
+            query = query.limit(limit)
+        return query.all()

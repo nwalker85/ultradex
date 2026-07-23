@@ -1,6 +1,6 @@
 """Delegation management endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -11,17 +11,18 @@ from core import (
     DelegationResponse,
     DelegationDB,
 )
+from ...auth import AuthenticatedPrincipal, require_delegation_admin_principal
 
 router = APIRouter()
 
 
 @router.post("/delegations", response_model=DelegationResponse)
 async def create_delegation(
-    delegator: str,
     delegatee: str,
     allowed_actions: List[str],
     allowed_resources: List[str] = None,
     days_valid: int = 30,
+    principal: AuthenticatedPrincipal = Depends(require_delegation_admin_principal),
     db: Session = Depends(get_db)
 ):
     """Create a new delegation"""
@@ -31,7 +32,7 @@ async def create_delegation(
 
         delegation = DelegationService.create_delegation(
             db,
-            delegator=delegator,
+            delegator=principal.subject,
             delegatee=delegatee,
             allowed_actions=allowed_actions,
             allowed_resources=allowed_resources,
@@ -55,7 +56,7 @@ async def create_delegation(
 @router.get("/delegations", response_model=List[DelegationResponse])
 async def list_delegations(
     delegatee: str = None,
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
     """List delegations"""

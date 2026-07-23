@@ -39,6 +39,8 @@ services:
       REDIS_URL: redis://redis:6379
       DEX_API_KEY: ${DEX_API_KEY}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      ULTRADEX_API_TOKEN: ${ULTRADEX_API_TOKEN}
+      ULTRADEX_OPERATOR_ID: ${ULTRADEX_OPERATOR_ID}
     ports:
       - "8000:8000"
     depends_on:
@@ -60,6 +62,8 @@ services:
       REDIS_URL: redis://redis:6379
       DEX_API_KEY: ${DEX_API_KEY}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      ULTRADEX_API_TOKEN: ${ULTRADEX_API_TOKEN}
+      ULTRADEX_OPERATOR_ID: ${ULTRADEX_OPERATOR_ID}
     depends_on:
       postgres:
         condition: service_healthy

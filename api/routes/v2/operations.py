@@ -1,6 +1,6 @@
 """v2 operation endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -32,7 +32,7 @@ async def get_operation_v2(
 
 @router.get("/operations", response_model=List[OperationResponse])
 async def list_operations_v2(
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
     """List recent operations (v2)"""

@@ -1,5 +1,7 @@
-"""Gateway service for command dispatch"""
+"""Gateway service for command dispatch."""
 
+import hashlib
+import json
 from typing import Optional, Any
 from arq.connections import ArqRedis
 from sqlalchemy.orm import Session
@@ -27,6 +29,34 @@ class CommandRequest:
         self.idempotency_key = idempotency_key
         self.correlation_id = correlation_id
 
+    def idempotency_fingerprint(self) -> str:
+        """Bind a caller key to the complete private command envelope."""
+        envelope = {
+            "tenant_id": "private",
+            "actor_id": self.actor_id,
+            "delegation_id": self.delegation_id,
+            "command": self.command,
+            "parameters": self.parameters,
+        }
+        encoded = json.dumps(
+            envelope,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+
+class IdempotencyConflictError(ValueError):
+    """Raised when a caller reuses a key for a different command envelope."""
+
+
+class QueueDispatchError(RuntimeError):
+    """Raised after a command is durably recorded but cannot be dispatched."""
+
+    def __init__(self, operation: OperationResponse):
+        super().__init__("Command queue unavailable")
+        self.operation = operation
+
 
 class GatewayService:
     def __init__(self, redis: ArqRedis):
@@ -43,19 +73,7 @@ class GatewayService:
         Returns:
             OperationResponse with operation_id for polling
         """
-        # 1. Check idempotency key
-        if command.idempotency_key:
-            cached_op_id = IdempotencyService.get_cached_operation(
-                db,
-                command.idempotency_key
-            )
-            if cached_op_id:
-                # Return cached operation
-                operation = OperationService.get_operation(db, cached_op_id)
-                if operation:
-                    return operation
-
-        # 2. Validate delegated execution when an explicit delegation is provided.
+        # 1. Validate delegated execution before consulting an idempotency cache.
         # Actor identity is correlation context; it does not itself assert delegated
         # authority. Authentication remains an API-layer responsibility.
         if command.delegation_id:
@@ -71,6 +89,22 @@ class GatewayService:
                 raise PermissionError(
                     f"Actor {command.actor_id} not authorized for {command.command}"
                 )
+
+        # 2. A caller-supplied key is valid only for the exact command envelope.
+        if command.idempotency_key:
+            cached = IdempotencyService.get_cached_binding(
+                db,
+                command.idempotency_key,
+            )
+            if cached:
+                cached_op_id, cached_fingerprint = cached
+                if cached_fingerprint != command.idempotency_fingerprint():
+                    raise IdempotencyConflictError(
+                        "Idempotency key is already bound to another command envelope"
+                    )
+                operation = OperationService.get_operation(db, cached_op_id)
+                if operation:
+                    return operation
 
         # 3. Create operation record (pending status)
         operation = OperationService.create_operation(
@@ -96,6 +130,7 @@ class GatewayService:
                 "command": command.command,
                 "actor_id": command.actor_id,
                 "delegation_id": command.delegation_id,
+                "idempotency_fingerprint": command.idempotency_fingerprint(),
             }
         )
 
@@ -108,10 +143,22 @@ class GatewayService:
                 operation.id,
                 command.parameters
             )
-        except Exception as e:
-            # If queue fails, mark operation as failed
-            OperationService.fail_operation(db, operation.id, f"Queue dispatch failed: {str(e)}")
-            raise
+        except Exception as error:
+            OperationService.fail_operation(
+                db,
+                operation.id,
+                f"Queue dispatch failed: {type(error).__name__}",
+            )
+            EventProducer.emit(
+                db,
+                EventType.TASK_FAILED,
+                operation.id,
+                {"reason_code": "queue_dispatch_failed"},
+            )
+            failed = OperationService.get_operation(db, operation.id)
+            if failed is None:  # pragma: no cover - operation was just persisted
+                raise RuntimeError("Failed operation disappeared") from error
+            raise QueueDispatchError(failed) from error
 
         # 7. Return operation details for polling
         return OperationResponse(

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import httpx
 import pytest
-from ravenhelm_contracts import ProjectionFreshnessV1
+from sqlalchemy import event
 
 from api.main import app
 from api.graphql.schema import schema
@@ -12,7 +12,7 @@ from core import EventProducer, EventType, OperationDB, get_db
 
 
 @pytest.mark.asyncio
-async def test_graphql_reads_operation_and_chronological_events(db_session):
+async def test_graphql_reads_operation_and_bounded_chronological_events(db_session):
     operation = OperationDB(
         id="op-graphql",
         correlation_id="corr-graphql",
@@ -43,15 +43,9 @@ async def test_graphql_reads_operation_and_chronological_events(db_session):
           operation(id: $id) {
             id
             status
-            freshness {
-              sourceEventId
-              sourceEventPosition
-              projectedAt
-              lagMs
-              status
-            }
-            events { eventType payload }
+            freshness { status }
           }
+          events(operationId: $id, first: 50) { id eventType payload }
         }
         """,
         variable_values={"id": operation.id},
@@ -59,19 +53,10 @@ async def test_graphql_reads_operation_and_chronological_events(db_session):
     )
 
     assert result.errors is None
-    freshness = ProjectionFreshnessV1.from_dict(
-        {
-            "source_event_id": result.data["operation"]["freshness"]["sourceEventId"],
-            "source_event_position": result.data["operation"]["freshness"]["sourceEventPosition"],
-            "projected_at": result.data["operation"]["freshness"]["projectedAt"],
-            "lag_ms": result.data["operation"]["freshness"]["lagMs"],
-            "status": result.data["operation"]["freshness"]["status"],
-        }
-    )
-    assert freshness.status == "fresh"
-    assert result.data["operation"]["events"] == [
-        {"eventType": "operation.accepted", "payload": {"order": 1}},
-        {"eventType": "task.started", "payload": {"order": 2}},
+    assert result.data["operation"]["freshness"] is None
+    assert result.data["events"] == [
+        {"id": first.id, "eventType": "operation.accepted", "payload": {"order": 1}},
+        {"id": second.id, "eventType": "task.started", "payload": {"order": 2}},
     ]
     assert {
         "id": result.data["operation"]["id"],
@@ -80,6 +65,47 @@ async def test_graphql_reads_operation_and_chronological_events(db_session):
         "id": "op-graphql",
         "status": "pending",
     }
+
+
+@pytest.mark.asyncio
+async def test_operation_list_does_not_query_events_per_operation(db_session):
+    for index in range(3):
+        db_session.add(
+            OperationDB(
+                id=f"op-n1-{index}",
+                command="sync",
+                status="pending",
+                created_at=datetime(2026, 7, 22, 12, index, 0),
+            )
+        )
+    db_session.commit()
+    statements: list[str] = []
+
+    def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(db_session.get_bind(), "before_cursor_execute", capture)
+    try:
+        result = await schema.execute(
+            "query { operations(limit: 3) { id status } }",
+            context_value={"db": db_session},
+        )
+    finally:
+        event.remove(db_session.get_bind(), "before_cursor_execute", capture)
+
+    assert result.errors is None
+    assert sum("FROM operations" in statement for statement in statements) == 1
+    assert not any("FROM operation_events" in statement for statement in statements)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, 101])
+async def test_graphql_operation_limits_are_bounded(db_session, limit):
+    result = await schema.execute(
+        f"query {{ operations(limit: {limit}) {{ id }} }}",
+        context_value={"db": db_session},
+    )
+    assert result.errors
 
 
 @pytest.mark.asyncio
@@ -130,6 +156,7 @@ async def test_mounted_graphql_route_uses_the_database_dependency(db_session):
         async with httpx.AsyncClient(
             transport=transport,
             base_url="http://test",
+            headers={"Authorization": "Bearer test-api-key"},
         ) as client:
             response = await client.post(
                 "/api/graphql",

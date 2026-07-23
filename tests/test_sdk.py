@@ -44,7 +44,7 @@ async def test_submit_analyze_returns_typed_handle_and_preserves_headers():
 
 
 @pytest.mark.asyncio
-async def test_submit_preserves_actor_and_correlation_context_headers():
+async def test_submit_drops_spoofable_actor_and_preserves_correlation_header():
     seen: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -61,7 +61,7 @@ async def test_submit_preserves_actor_and_correlation_context_headers():
     await client.close()
 
     assert handle.correlation_id == "corr-sdk"
-    assert seen[0].headers["X-Actor-Id"] == "operator:nate"
+    assert "X-Actor-Id" not in seen[0].headers
     assert seen[0].headers["X-Correlation-Id"] == "corr-sdk"
 
 
@@ -140,12 +140,17 @@ async def test_operation_reads_use_graphql_projection_surface():
 
     client = UltradexClient(transport=httpx.MockTransport(handler))
     operation = await client.get_operation("op-read")
-    events = await client.get_operation_events("op-read")
+    events = await client.get_operation_events("op-read", first=25, after=10)
     await client.close()
 
     assert operation["id"] == "op-read"
     assert events[0]["event_type"] == "operation.accepted"
-    assert all(payload["variables"] == {"operationId": "op-read"} for payload in seen)
+    assert seen[0]["variables"] == {"operationId": "op-read"}
+    assert seen[1]["variables"] == {
+        "operationId": "op-read",
+        "first": 25,
+        "after": 10,
+    }
 
 
 @pytest.mark.asyncio

@@ -264,7 +264,7 @@ ultradex config
 ### Quick Sync
 
 ```python
-from sdk.ultradex_sdk import analyze_contacts
+from ultradex_sdk import analyze_contacts
 
 result = analyze_contacts(limit=50)
 print(result["result"]["analyzed"])
@@ -274,7 +274,7 @@ print(result["result"]["analyzed"])
 
 ```python
 import asyncio
-from sdk.ultradex_sdk import UltradexClient
+from ultradex_sdk import UltradexClient
 
 async def main():
     async with UltradexClient("http://localhost:8000") as client:

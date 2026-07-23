@@ -128,4 +128,3 @@ The domain is `private`, `operator-only`, and assigned to proposed `private-esta
 10. Computed registers and end-to-end conformance.
 
 Each unit uses a dedicated worktree, produces one reviewable PR, and has a red-green test cycle. No PR is merged without explicit PR-specific approval.
-

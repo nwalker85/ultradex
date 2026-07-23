@@ -100,5 +100,5 @@ python -m compileall -q sdk tests
 python -m build
 ```
 
-The wheel exports only `ultradex_sdk`; the legacy MCP and Go CLI sources are not
-included in the Python artifact.
+The wheel exports `ultradex_sdk` and the backwards-compatible `sdk` namespace;
+the legacy MCP and Go CLI sources are not included in the Python artifact.

@@ -2,11 +2,10 @@
 
 from collections.abc import Generator
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from .models import (
+    Base,
     get_engine,
-    get_session_factory,
-    init_db,
     ContactDB,
     AnalysisRunDB,
     OperationDB,
@@ -19,11 +18,11 @@ class Database:
     def __init__(self, database_url: str):
         self.database_url = database_url
         self.engine = get_engine(database_url)
-        self.SessionLocal = get_session_factory(database_url)
+        self.SessionLocal = sessionmaker(bind=self.engine)
     
     def init(self):
         """Initialize database tables"""
-        init_db(self.database_url)
+        Base.metadata.create_all(self.engine)
     
     def get_session(self) -> Session:
         """Get database session"""
@@ -39,8 +38,17 @@ _db = None
 
 def init_database(database_url: str):
     global _db
+    if _db is not None:
+        _db.close()
     _db = Database(database_url)
     _db.init()
+
+
+def close_database() -> None:
+    global _db
+    if _db is not None:
+        _db.close()
+        _db = None
 
 def get_db() -> Generator[Session, None, None]:
     global _db

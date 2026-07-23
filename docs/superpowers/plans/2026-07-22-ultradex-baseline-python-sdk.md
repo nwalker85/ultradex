@@ -89,7 +89,7 @@
 **Expected RED:** SDK methods return dictionaries, submit the wrong request shape, assume `id`, poll immediately, and use REST for reads.
 
 - [x] Add `submit_analyze_contacts()` and `submit_sync_contacts()` returning `ContractHandleV1` immediately.
-- [x] Preserve authorization, idempotency, actor, and correlation headers.
+- [x] Preserve bearer authorization, idempotency, delegation, and correlation headers; derive actor identity server-side.
 - [x] Query operation lifecycle/events through GraphQL and surface GraphQL errors explicitly.
 - [x] Keep legacy `analyze_contacts()` / `sync_contacts()` wrappers by composing submit plus wait; acceptance never masquerades as completion.
 - [x] Accept an injected HTTPX transport for hermetic tests.
@@ -97,10 +97,10 @@
 
 ### Task 5: Verify and publish JS-U01
 
-- [x] `pytest -q` passes: 19 tests plus exactly one documented strict MCP XFAIL.
+- [x] `pytest -q` passes: 38 tests plus exactly one documented strict MCP XFAIL.
 - [x] `python -m compileall -q api core sdk tests` passes.
 - [x] `python -m build` produces an SDK-only wheel and sdist.
-- [x] Wheel inspection and a clean Python 3.13 consumer install confirm `ultradex_sdk` plus metadata, with no `mcp`, `api`, `core`, or CLI package.
-- [x] `git diff --check` passes.
+- [x] Wheel inspection and an out-of-tree import check confirm current `ultradex_sdk`, compatible `sdk`, and metadata, with no `mcp`, `api`, `core`, or CLI package.
+- [x] `git diff --check origin/main...HEAD` passes.
 - [ ] Independent review reports findings first and clears the unit.
 - [ ] Push branch and open a GitHub PR; do not merge without PR-specific approval.

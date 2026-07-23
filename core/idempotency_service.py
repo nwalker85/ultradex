@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
-from .models import IdempotencyKeyDB
+from .models import EventType, IdempotencyKeyDB, OperationEventDB
 
 
 class IdempotencyService:
@@ -49,6 +49,29 @@ class IdempotencyService:
         if idempotency:
             return idempotency.operation_id
         return None
+
+    @staticmethod
+    def get_cached_binding(
+        db: Session,
+        key: str,
+    ) -> Optional[tuple[str, str]]:
+        """Return the operation and immutable request fingerprint for a live key."""
+        operation_id = IdempotencyService.get_cached_operation(db, key)
+        if operation_id is None:
+            return None
+        accepted = (
+            db.query(OperationEventDB)
+            .filter(
+                OperationEventDB.operation_id == operation_id,
+                OperationEventDB.event_type == EventType.OPERATION_ACCEPTED,
+            )
+            .order_by(OperationEventDB.id.asc())
+            .first()
+        )
+        fingerprint = (accepted.payload or {}).get("idempotency_fingerprint") if accepted else None
+        if not isinstance(fingerprint, str) or not fingerprint:
+            return operation_id, "legacy-unbound"
+        return operation_id, fingerprint
 
     @staticmethod
     def cleanup_expired_keys(db: Session) -> int:

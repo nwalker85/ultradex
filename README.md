@@ -29,6 +29,8 @@ Current compatibility commands:
 Both return `202 Accepted` with the shared Ravenhelm `ContractHandleV1`. The
 `Idempotency-Key` header deduplicates submissions. A legacy query-string `limit`
 remains supported for analyze clients; new clients send `{"limit": N}` as JSON.
+All domain surfaces require a bearer credential. Actor identity is derived from the
+validated credential; caller-supplied `X-Actor-Id` values are ignored.
 
 Read-only lifecycle queries are mounted at `POST /api/graphql`. The official Python
 SDK uses GraphQL for operation and event projections. REST v1/v2 operation reads
@@ -39,7 +41,10 @@ remain available for compatibility during the migration.
 ```python
 from ultradex_sdk import UltradexClient
 
-async with UltradexClient("http://localhost:8000") as client:
+async with UltradexClient(
+    "http://localhost:8000",
+    api_key="...",  # injected from 1Password-backed environment configuration
+) as client:
     handle = await client.submit_analyze_contacts(
         limit=50,
         idempotency_key="analysis-2026-07-22",
@@ -67,9 +72,9 @@ The approved design and bounded work units are recorded in:
 
 ## Development
 
-Requirements: Python 3.11+, PostgreSQL 14+, Redis, Dex credentials, and an Anthropic
-credential. Secrets belong in 1Password-backed environment configuration; never
-commit them.
+Requirements: Python 3.11+, PostgreSQL 14+, Redis, Dex credentials, an Anthropic
+credential, `ULTRADEX_API_TOKEN`, and `ULTRADEX_OPERATOR_ID`. Secrets belong in
+1Password-backed environment configuration; never commit them.
 
 ```bash
 python -m venv .venv

@@ -55,8 +55,9 @@ class UltradexClient:
         headers = self._get_headers().copy()
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
-        if actor_id:
-            headers["X-Actor-Id"] = actor_id
+        # Kept as a source-compatible argument for 1.x callers. The server
+        # derives actor identity from the bearer credential and ignores spoofable
+        # caller identity headers.
         if correlation_id:
             headers["X-Correlation-Id"] = correlation_id
 
@@ -78,8 +79,7 @@ class UltradexClient:
         headers = self._get_headers().copy()
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
-        if actor_id:
-            headers["X-Actor-Id"] = actor_id
+        # ``actor_id`` remains source-compatible but is intentionally not sent.
         if correlation_id:
             headers["X-Correlation-Id"] = correlation_id
 
@@ -160,12 +160,17 @@ class UltradexClient:
         )
         return data["operation"]
 
-    async def get_operation_events(self, operation_id: str) -> list:
-        """Read an operation lifecycle from the GraphQL projection surface."""
+    async def get_operation_events(
+        self,
+        operation_id: str,
+        first: int = 50,
+        after: Optional[int] = None,
+    ) -> list:
+        """Read one bounded lifecycle page from the GraphQL projection surface."""
         data = await self._graphql(
             """
-            query Events($operationId: String!) {
-              events(operationId: $operationId) {
+            query Events($operationId: String!, $first: Int!, $after: Int) {
+              events(operationId: $operationId, first: $first, after: $after) {
                 id
                 operation_id: operationId
                 event_type: eventType
@@ -174,7 +179,7 @@ class UltradexClient:
               }
             }
             """,
-            {"operationId": operation_id},
+            {"operationId": operation_id, "first": first, "after": after},
         )
         return data["events"]
 
