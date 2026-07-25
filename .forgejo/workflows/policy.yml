@@ -1,0 +1,38 @@
+name: forgejo-policy
+
+# Fleet policy gate. This workflow is intentionally repository-local so it can
+# be reviewed and pinned with the repository's source. Branch protection requires
+# this status alongside the profile CI gate.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  policy:
+    runs-on: docker
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+
+      - name: Validate repository policy
+        env:
+          REPO_PROFILE: ${{ vars.FORGE_PROFILE }}
+          CI_GIT_TOKEN: ${{ secrets.CI_GIT_TOKEN }}
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -f .forgejo/workflows/ci.yml
+          test -n "$CI_GIT_TOKEN" || { echo 'missing CI_GIT_TOKEN'; exit 1; }
+          case "${REPO_PROFILE:-}" in
+            A|B)
+              test -n "$HARBOR_USERNAME" || { echo 'missing HARBOR_USERNAME'; exit 1; }
+              test -n "$HARBOR_PASSWORD" || { echo 'missing HARBOR_PASSWORD'; exit 1; }
+              ;;
+            C|D|'')
+              ;;
+            *)
+              echo "unsupported FORGE_PROFILE: $REPO_PROFILE"
+              exit 1
+              ;;
+          esac
