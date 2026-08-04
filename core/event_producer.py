@@ -10,7 +10,7 @@ class EventProducer:
     @staticmethod
     def emit(
         db: Session,
-        event_type: EventType,
+        event_type: EventType | str,
         operation_id: str,
         payload: Optional[dict] = None,
         *,

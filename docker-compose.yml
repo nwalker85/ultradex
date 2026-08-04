@@ -29,6 +29,25 @@ services:
       timeout: 5s
       retries: 5
 
+  nats:
+    image: nats:2.11-alpine
+    container_name: ultradex-nats
+    command: ["-js", "-m", "8222", "--store_dir", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - ultradex_nats:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - 'http://127.0.0.1:8222/healthz?js-enabled-only=true'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
@@ -41,12 +60,22 @@ services:
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
       ULTRADEX_API_TOKEN: ${ULTRADEX_API_TOKEN}
       ULTRADEX_OPERATOR_ID: ${ULTRADEX_OPERATOR_ID}
+      NATS_URL: nats://nats:4222
+      ULTRADEX_ACCOUNTABILITY_HMAC_KEY: ${ULTRADEX_ACCOUNTABILITY_HMAC_KEY}
+      ULTRADEX_RECEIPT_ED25519_PRIVATE_KEY: ${ULTRADEX_RECEIPT_ED25519_PRIVATE_KEY}
+      ULTRADEX_RECEIPT_KEY_ID: ${ULTRADEX_RECEIPT_KEY_ID}
+      ULTRADEX_EXECUTOR_PAIRWISE_ID: ${ULTRADEX_EXECUTOR_PAIRWISE_ID}
+      ULTRADEX_SERVICE_VERSION: ${ULTRADEX_SERVICE_VERSION:-2.0.0}
+      ULTRADEX_DEPLOYMENT_SHA: ${ULTRADEX_DEPLOYMENT_SHA:-development}
+      ULTRADEX_ENVIRONMENT: ${ULTRADEX_ENVIRONMENT:-local}
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      nats:
         condition: service_healthy
     volumes:
       - .:/app
@@ -73,5 +102,30 @@ services:
       - .:/app
     command: python -m arq core.workers.WorkerSettings
 
+  jobsearch-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ultradex-jobsearch-worker
+    environment:
+      DATABASE_URL: postgresql://ultradex:ultradex_dev_password@postgres:5432/ultradex
+      NATS_URL: nats://nats:4222
+      ULTRADEX_ACCOUNTABILITY_HMAC_KEY: ${ULTRADEX_ACCOUNTABILITY_HMAC_KEY}
+      ULTRADEX_RECEIPT_ED25519_PRIVATE_KEY: ${ULTRADEX_RECEIPT_ED25519_PRIVATE_KEY}
+      ULTRADEX_RECEIPT_KEY_ID: ${ULTRADEX_RECEIPT_KEY_ID}
+      ULTRADEX_EXECUTOR_PAIRWISE_ID: ${ULTRADEX_EXECUTOR_PAIRWISE_ID}
+      ULTRADEX_SERVICE_VERSION: ${ULTRADEX_SERVICE_VERSION:-2.0.0}
+      ULTRADEX_DEPLOYMENT_SHA: ${ULTRADEX_DEPLOYMENT_SHA:-development}
+      ULTRADEX_ENVIRONMENT: ${ULTRADEX_ENVIRONMENT:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: python -m core.jobsearch_worker
+
 volumes:
   ultradex_db:
+  ultradex_nats:

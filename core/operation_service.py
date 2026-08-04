@@ -13,11 +13,12 @@ class OperationService:
         command: str,
         correlation_id: str = None,
         *,
+        operation_id: str | None = None,
         commit: bool = True,
     ) -> OperationDB:
         """Create a new operation record"""
         operation = OperationDB(
-            id=str(uuid.uuid4()),
+            id=operation_id or str(uuid.uuid4()),
             correlation_id=correlation_id or str(uuid.uuid4()),
             command=command,
             status=OperationStatus.PENDING
@@ -29,7 +30,12 @@ class OperationService:
         return operation
 
     @staticmethod
-    def start_operation(db: Session, operation_id: str) -> OperationDB:
+    def start_operation(
+        db: Session,
+        operation_id: str,
+        *,
+        commit: bool = True,
+    ) -> OperationDB:
         """Mark operation as running"""
         operation = db.query(OperationDB).filter(
             OperationDB.id == operation_id
@@ -37,15 +43,18 @@ class OperationService:
         if operation:
             operation.status = OperationStatus.RUNNING
             operation.started_at = datetime.now()
-            db.commit()
-            db.refresh(operation)
+            if commit:
+                db.commit()
+                db.refresh(operation)
         return operation
 
     @staticmethod
     def complete_operation(
         db: Session,
         operation_id: str,
-        result: dict
+        result: dict,
+        *,
+        commit: bool = True,
     ) -> OperationDB:
         """Mark operation as completed with result"""
         operation = db.query(OperationDB).filter(
@@ -55,15 +64,18 @@ class OperationService:
             operation.status = OperationStatus.COMPLETED
             operation.completed_at = datetime.now()
             operation.result = result
-            db.commit()
-            db.refresh(operation)
+            if commit:
+                db.commit()
+                db.refresh(operation)
         return operation
 
     @staticmethod
     def fail_operation(
         db: Session,
         operation_id: str,
-        error: str
+        error: str,
+        *,
+        commit: bool = True,
     ) -> OperationDB:
         """Mark operation as failed with error"""
         operation = db.query(OperationDB).filter(
@@ -73,8 +85,30 @@ class OperationService:
             operation.status = OperationStatus.FAILED
             operation.completed_at = datetime.now()
             operation.error = error
-            db.commit()
-            db.refresh(operation)
+            if commit:
+                db.commit()
+                db.refresh(operation)
+        return operation
+
+    @staticmethod
+    def refuse_operation(
+        db: Session,
+        operation_id: str,
+        reason: str,
+        *,
+        commit: bool = True,
+    ) -> OperationDB:
+        """Mark an operation as a structured terminal refusal."""
+        operation = db.query(OperationDB).filter(
+            OperationDB.id == operation_id
+        ).first()
+        if operation:
+            operation.status = OperationStatus.REFUSED
+            operation.completed_at = datetime.now()
+            operation.error = reason
+            if commit:
+                db.commit()
+                db.refresh(operation)
         return operation
 
     @staticmethod
