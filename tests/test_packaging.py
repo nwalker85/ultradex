@@ -53,7 +53,20 @@ def test_built_wheel_preserves_sdk_compatibility_without_server_packages(tmp_pat
             (
                 "from sdk import UltradexClient as Legacy; "
                 "from ultradex_sdk import UltradexClient as Current; "
-                "assert Legacy is Current"
+                "assert Legacy is Current; "
+                "methods = {"
+                "'submit_sources_ingest', "
+                "'submit_opportunity_create', "
+                "'submit_opportunity_score', "
+                "'submit_application_transition', "
+                "'submit_relationship_sync', "
+                "'submit_outreach_prepare', "
+                "'submit_outreach_approve', "
+                "'submit_outreach_send', "
+                "'submit_evidence_export'"
+                "}; "
+                "assert all(callable(getattr(Current, name, None)) "
+                "for name in methods)"
             ),
         ],
         cwd=tmp_path,

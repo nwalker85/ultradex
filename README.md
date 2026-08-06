@@ -34,6 +34,24 @@ If queue dispatch fails after durable acceptance, the same schema is returned at
 All domain surfaces require a bearer credential. Actor identity is derived from the
 validated credential; caller-supplied `X-Actor-Id` values are ignored.
 
+Governed job-search mutations use
+`POST /api/v2/job-search/commands/{command_name}` and the same
+`ContractHandleV1` response. The closed command catalog is:
+
+- `sources.ingest`
+- `opportunities.create`
+- `opportunities.score`
+- `applications.transition`
+- `relationships.sync`
+- `outreach.prepare`
+- `outreach.approve`
+- `outreach.send`
+- `evidence.export`
+
+Call these commands through the official Python SDK methods, which validate the
+shared `JobSearchCommandV1` contract before making a REST request. Neither the SDK
+nor other clients receive database or NATS credentials.
+
 Read-only lifecycle queries are mounted at `POST /api/graphql`. The official Python
 SDK uses GraphQL for operation and event projections. REST v1/v2 operation reads
 remain available for compatibility during the migration.
@@ -63,7 +81,35 @@ async with UltradexClient(
 ```
 
 The existing `analyze_contacts()` and `sync_contacts()` SDK methods remain blocking
-submit-and-poll wrappers. See [SDK_README.md](SDK_README.md).
+submit-and-poll wrappers. Job-search command methods include
+`submit_sources_ingest()`, `submit_opportunity_create()`,
+`submit_opportunity_score()`, `submit_application_transition()`,
+`submit_relationship_sync()`, `submit_outreach_prepare()`,
+`submit_outreach_approve()`, `submit_outreach_send()`, and
+`submit_evidence_export()`. See [SDK_README.md](SDK_README.md).
+
+## Job-search runtime
+
+NATS JetStream carries durable command and lifecycle facts on the bounded subjects
+`ultradex.jobsearch.commands.v1.*` and `ultradex.jobsearch.events.v1.*`. The
+`jobsearch-worker` is a separate durable pull consumer; the existing Redis/ARQ
+`worker` remains unchanged for contact-analysis compatibility. Accepted commands
+and unpublished lifecycle events form a database-backed outbox. The worker drains
+that outbox before consuming tasks, so a process crash between the database commit
+and JetStream publication is recovered with the original NATS deduplication ID.
+
+Every terminal job-search outcome commits its lifecycle event, projection
+checkpoint, and signed `accountability.v1` execution receipt in one database
+transaction before the worker acknowledges the message. Execution holds the
+operation transaction through the domain mutation, serializing duplicate deliveries
+before they can repeat a side effect. Receipts contain opaque or pairwise references
+and HMAC commitments, not private source content.
+
+The command runtime is intentionally fail-closed. Gmail, LinkedIn, Dex, scoring,
+relationship-resolution, and message-delivery adapters remain unbound until their
+bounded implementation units land. Commands requiring an unbound adapter produce a
+governed refusal; `outreach.send` also requires an exact, unexpired approval matching
+the draft commitment and delivery channel.
 
 ## Privacy and observability
 
@@ -82,9 +128,11 @@ The approved design and bounded work units are recorded in:
 
 ## Development
 
-Requirements: Python 3.11+, PostgreSQL 14+, Redis, Dex credentials, an Anthropic
-credential, `ULTRADEX_API_TOKEN`, and `ULTRADEX_OPERATOR_ID`. Secrets belong in
-1Password-backed environment configuration; never commit them.
+Requirements: Python 3.11+, PostgreSQL 14+, Redis, NATS with JetStream, Dex
+credentials, an Anthropic credential, `ULTRADEX_API_TOKEN`,
+`ULTRADEX_OPERATOR_ID`, and the accountability receipt settings shown in
+`.env.example`. Secrets belong in 1Password-backed environment configuration; never
+commit them.
 
 ```bash
 python -m venv .venv
@@ -98,25 +146,22 @@ python -m pip check
 ```
 
 Production startup preserves the legacy table bootstrap and then applies the
-versioned job-search Alembic revision. The JS-U02 persistence unit is stacked on
-Ultradex PR 2 and `ravenhelm-contracts` PR 18; it must not merge before those
-dependencies are ready.
+versioned job-search Alembic revisions. Start the API, the existing ARQ worker, and
+the dedicated job-search worker only after PostgreSQL and JetStream report healthy.
 
 Run the service through the repository's managed runtime/deployment configuration.
 Node processes, if added, must use PM2 per Ravenhelm standards.
 
 ## Delivery sequence
 
-The baseline currently establishes the contract boundary, packageable Python SDK,
-GraphQL read surface, idempotent command compatibility, and hermetic tests. Subsequent
-bounded units add:
+The implemented foundation establishes the contract boundary, packageable Python
+SDK, GraphQL read surface, governed job-search commands, durable execution, and
+hermetic tests. Subsequent bounded units add:
 
-1. job-search persistence and migrations;
-2. governed opportunity, application, relationship, and outreach commands;
-3. Gmail, LinkedIn, Dex, GitHub, and web ingestion adapters;
-4. Go SDK and CLI generated from the same contracts;
-5. MCP tools that call the official SDK only;
-6. canonical telemetry, audit correlation, and computed blind-spot/broken-binding
+1. Gmail, LinkedIn-safe, Dex, GitHub, and web ingestion adapters;
+2. Go SDK and CLI generated from the same contracts;
+3. MCP tools that call the official SDK only;
+4. canonical telemetry, audit correlation, and computed blind-spot/broken-binding
    registers.
 
 The existing top-level `mcp` package has a known import collision. Its repair is

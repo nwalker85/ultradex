@@ -52,16 +52,17 @@ JS-C01 control-surface/job-search contracts
 | JS-U07 | `ultradex` plus fleet config | Event-to-telemetry projector, dashboard, alerts, catalog, runbooks | JS-O01, JS-U03 | redaction, cardinality, lag, receipt coverage |
 | JS-U08 | `ultradex` plus dossier projection | Computed Blind Spots/Broken Bindings and end-to-end canary | JS-U07 | outage invariants and accountability export |
 
-## Execution status (2026-07-23)
+## Execution status (updated 2026-07-29)
 
 | ID | State | Evidence / blocker |
 |---|---|---|
-| JS-C01 | PR 18 open; green | `ravenhelm-contracts` contract PR is open with required checks green. |
+| JS-C01 | merged; package published | `ravenhelm-contracts` PR 18 merged as `7a6de85`; the Forgejo Python registry resolves and installs `ravenhelm-contracts==0.2.0`. |
 | JS-O01 | PR 6 open; green | Python instrumentation PR is open with required checks green. |
 | JS-G01 | pending | New-repository lifecycle work has not started. |
-| JS-U01 | PR 2 open; reviewed | Independent review is clear; authentication, executable worker registry, atomic scoped idempotency, governed 503 handles, SDK delegation, bounded GraphQL reads, honest nullable freshness, shared OpenAPI/runtime validation, compile, build, and compatibility wheel checks pass. |
-| JS-U02 | PR 3 open; reviewed | [Ultradex PR 3](https://github.com/nwalker85/ultradex/pull/3) is stacked on PR 2. Versioned migrations, contract-backed persistence reads, and a read-only GraphQL projection surface are implemented. Final-review fixes preserve same-connection in-memory startup, canonical checkpoint keys, validated outreach item provenance, and exact `RelationshipV1` schema scope. Verification passes with 103 tests and one pre-existing strict MCP XFAIL; the focused JS-U02 suite passes all 60 tests. Compile, wheel/sdist build, dependency, and diff checks pass. Independent whole-unit review reports no Critical, Important, or Minor findings. Do not merge until PR 2 is merged and `ravenhelm-contracts==0.2.0` is published. |
-| JS-U03–JS-U08 | pending | Dependency boundaries remain frozen below; no implementation has started in these units. |
+| JS-U01 | merged | [Ultradex PR 2](https://github.com/nwalker85/ultradex/pull/2) merged as `d068c73`. The authenticated control surface, official Python SDK, bounded operation/event reads, and legacy compatibility baseline are on `main`. |
+| JS-U02 | merged | [Ultradex PR 3](https://github.com/nwalker85/ultradex/pull/3) merged as `17e02b9`. Versioned persistence, contract-backed repositories, and read-only job-search GraphQL projections are on `main`. |
+| JS-U03 | [canonical Forgejo PR 3 open](http://hrafngud.taild7ad1f.ts.net:3300/nate/ultradex/pulls/3) | All nine governed commands, REST/SDK entrypoints, JetStream tasks, crash-safe outbox recovery, serialized executors, signed receipts, and exact outreach approval enforcement are restored on `feat/jobsearch-governed-commands-forgejo`, rebased onto canonical Forgejo `main` at `5695a04`. Fresh local verification: `166 passed, 1 xfailed, 1 warning`; compile, wheel/sdist build, dependency, and diff checks exit zero. [GitHub PR 4](https://github.com/nwalker85/ultradex/pull/4) is historical passive-mirror evidence, not the canonical review gate. The code is not merged, deployed, or live. |
+| JS-U04–JS-U08 | pending | Source adapters, Go SDK/CLI, MCP/automation, telemetry projection, and computed registers remain separate bounded units. JS-U04 stays gated on JS-U03 merge; default source, scoring, Dex, and delivery ports refuse safely until then. |
 
 ## Orchestration rules
 

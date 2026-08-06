@@ -4,7 +4,7 @@ from collections.abc import Generator
 
 from sqlalchemy.orm import Session, sessionmaker
 from .jobsearch_migrations import run_jobsearch_migrations
-from .jobsearch_models import JOBSEARCH_PROJECTION_TABLES
+from .jobsearch_models import JOBSEARCH_COMMAND_TABLES, JOBSEARCH_PROJECTION_TABLES
 from .models import (
     Base,
     get_engine,
@@ -27,7 +27,8 @@ class Database:
         legacy_tables = [
             table
             for table in Base.metadata.sorted_tables
-            if table.name not in JOBSEARCH_PROJECTION_TABLES
+            if table.name
+            not in (JOBSEARCH_PROJECTION_TABLES | JOBSEARCH_COMMAND_TABLES)
         ]
         with self.engine.begin() as connection:
             Base.metadata.create_all(connection, tables=legacy_tables)

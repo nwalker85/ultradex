@@ -153,16 +153,26 @@ DOCKER
 
 # === PYTHON GATE ===
 python_gate() {
-  # Cache key from the strongest available lock/manifest.
-  LOCKFILE=""
-  for f in uv.lock pyproject.toml requirements.txt; do [ -f "$f" ] && { LOCKFILE="$f"; break; }; done
-  [ -n "$LOCKFILE" ] || { echo "no uv.lock / pyproject.toml / requirements.txt — not a python repo" >&2; exit 1; }
+  # Cache key must cover every manifest that feeds the deps image. Preferring a single
+  # "strongest" file (e.g. a stub pyproject.toml) silently reuses a stale image when
+  # requirements.txt gains deps (nats-py on JS-U03). Hash all present manifests.
+  LOCKFILES=""
+  for f in uv.lock pyproject.toml requirements.txt; do
+    [ -f "$f" ] && LOCKFILES="$LOCKFILES $f"
+  done
+  [ -n "$LOCKFILES" ] || { echo "no uv.lock / pyproject.toml / requirements.txt — not a python repo" >&2; exit 1; }
 
   # Bump PYGATE_REV whenever the deps-install recipe below changes: the cache tag is
-  # otherwise keyed only by the lockfile, so a changed install would silently reuse a
+  # otherwise keyed only by manifests, so a changed install would silently reuse a
   # stale deps image. Rotating REV forces a rebuild.
-  PYGATE_REV=8
-  CACHE_TAG=$(printf 'pygate%s\n%s' "$PYGATE_REV" "$(cat "$LOCKFILE")" | sha256sum | awk '{print $1}' | cut -c1-16)
+  PYGATE_REV=9
+  CACHE_TAG=$(
+    {
+      printf 'pygate%s\n' "$PYGATE_REV"
+      # shellcheck disable=SC2086
+      cat $LOCKFILES
+    } | sha256sum | awk '{print $1}' | cut -c1-16
+  )
   DEPS_IMG="${REPO}${SERVICE_SLUG:+-$SERVICE_SLUG}-ci-deps:${CACHE_TAG}"
 
   NETRC_SRC="$HOME/services/forge-toolkit/.forgejo-netrc"
