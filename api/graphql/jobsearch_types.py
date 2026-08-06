@@ -13,8 +13,13 @@ from ravenhelm_contracts import (
     ProjectionFreshnessV1,
     RelationshipV1,
 )
+from strawberry.scalars import JSON
 
 from core import ProjectedOutreach, ProjectionPage
+from core.jobsearch_projections import (
+    ApprovalEvidence as ApprovalEvidenceProjection,
+    ExecutionReceiptEvidence as ExecutionReceiptEvidenceProjection,
+)
 
 
 def _datetime(value: str) -> datetime:
@@ -218,6 +223,67 @@ class Outreach:
             freshness=ProjectionFreshness.from_contract(projection.freshness),
             created_at=_datetime(contract.created_at),
             updated_at=_datetime(contract.updated_at),
+        )
+
+
+@strawberry.type
+class ApprovalEvidence:
+    approval_id: str
+    outreach_id: str
+    message_commitment: str
+    channel: str
+    approved_by: str
+    issued_at: datetime
+    expires_at: datetime
+    status: str
+
+    @classmethod
+    def from_projection(
+        cls,
+        projection: ApprovalEvidenceProjection,
+    ) -> "ApprovalEvidence":
+        return cls(
+            approval_id=projection.approval_id,
+            outreach_id=projection.outreach_id,
+            message_commitment=projection.message_commitment,
+            channel=projection.channel,
+            approved_by=projection.approved_by,
+            issued_at=_datetime(projection.issued_at),
+            expires_at=_datetime(projection.expires_at),
+            status=projection.status,
+        )
+
+
+@strawberry.type
+class ExecutionReceiptEvidence:
+    receipt_id: str
+    operation_id: str
+    event_id: str
+    status: str
+    reason_code: str | None
+    payload: JSON
+    receipt_hash: str
+    created_at: datetime
+    completed_at: datetime
+    proof_status: str
+
+    @classmethod
+    def from_projection(
+        cls,
+        projection: ExecutionReceiptEvidenceProjection,
+    ) -> "ExecutionReceiptEvidence":
+        receipt = projection.receipt
+        return cls(
+            receipt_id=receipt.receipt_id,
+            operation_id=projection.operation_id,
+            event_id=receipt.event_id,
+            status=receipt.status,
+            reason_code=receipt.reason_code,
+            payload=receipt.to_dict(),
+            receipt_hash=projection.receipt_hash,
+            created_at=_datetime(projection.created_at),
+            completed_at=_datetime(projection.completed_at),
+            proof_status=projection.proof_status,
         )
 
 

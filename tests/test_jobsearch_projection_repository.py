@@ -24,6 +24,8 @@ from core import (
 )
 from core.jobsearch_models import (
     ApplicationProjectionDB,
+    JobSearchApprovalDB,
+    JobSearchExecutionReceiptDB,
     OpportunityProjectionDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
@@ -34,6 +36,59 @@ from core.models import Base
 
 NOW = datetime(2026, 7, 23, 6, 0, tzinfo=timezone.utc)
 VALID_COMMITMENT = f"sha256:{'a' * 64}"
+VALID_RECEIPT_HASH = (
+    "sha256:e18c64598f2b5ed18116c8a00403bba04bb3f219d222377880a66fa56683d145"
+)
+VALID_RECEIPT_PAYLOAD: dict[str, object] = {
+    "contract_version": "accountability.v1",
+    "receipt_id": "opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+    "event_id": "opaque:v1:EEEEEEEEEEEEEEEEEEEEEE",
+    "stream_pairwise_id": "pairwise:v1:SSSSSSSSSSSSSSSSSSSSSS",
+    "sequence": 1,
+    "subject_pairwise_id": "pairwise:v1:UUUUUUUUUUUUUUUUUUUUUU",
+    "tenant_scope": {
+        "scheme": "hmac_sha256_v1",
+        "purpose": "jobsearch_operation",
+        "digest": (
+            "sha256:"
+            "1111111111111111111111111111111111111111111111111111111111111111"
+        ),
+    },
+    "purpose": "jobsearch_operation",
+    "request_id": "opaque:v1:QQQQQQQQQQQQQQQQQQQQQQ",
+    "idempotency_key": "opaque:v1:IIIIIIIIIIIIIIIIIIIIII",
+    "action_commitment": {
+        "scheme": "hmac_sha256_v1",
+        "purpose": "jobsearch_operation",
+        "digest": (
+            "sha256:"
+            "2222222222222222222222222222222222222222222222222222222222222222"
+        ),
+    },
+    "execution_id": "opaque:v1:XXXXXXXXXXXXXXXXXXXXXX",
+    "executor_pairwise_id": "pairwise:v1:ZZZZZZZZZZZZZZZZZZZZZZ",
+    "status": "succeeded",
+    "started_at": "2026-07-23T06:00:00.000Z",
+    "completed_at": "2026-07-23T06:01:00.000Z",
+    "result_commitment": {
+        "scheme": "hmac_sha256_v1",
+        "purpose": "jobsearch_operation",
+        "digest": (
+            "sha256:"
+            "3333333333333333333333333333333333333333333333333333333333333333"
+        ),
+    },
+    "reason_code": None,
+    "daml_transaction": None,
+    "signature": {
+        "algorithm": "ed25519",
+        "key_id": "pairwise:v1:KKKKKKKKKKKKKKKKKKKKKK",
+        "signature": (
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ),
+    },
+}
 
 
 @pytest.fixture
@@ -606,3 +661,159 @@ def test_detail_methods_return_contracts_and_none_for_unknown_ids(
     assert repository.get_application("missing") is None
     assert repository.get_relationship("missing") is None
     assert repository.get_outreach("missing") is None
+
+
+def test_get_approval_resolves_exact_primary_id_with_complete_binding(
+    db_session: Session,
+) -> None:
+    db_session.add_all(
+        [
+            JobSearchApprovalDB(
+                approval_id="approval-01",
+                outreach_id="outreach-01",
+                message_commitment=f"sha256:{'4' * 64}",
+                channel="gmail",
+                approved_by="operator:synthetic-one",
+                issued_at=NOW,
+                expires_at=NOW + timedelta(hours=24),
+                status="approved",
+            ),
+            JobSearchApprovalDB(
+                approval_id="approval-02",
+                outreach_id="outreach-02",
+                message_commitment=f"sha256:{'5' * 64}",
+                channel="linkedin",
+                approved_by="operator:synthetic-two",
+                issued_at=NOW + timedelta(minutes=1),
+                expires_at=NOW + timedelta(hours=12),
+                status="approved",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    repository = JobSearchProjectionRepository(db_session)
+    approval = repository.get_approval("approval-02")
+
+    assert approval is not None
+    assert approval.approval_id == "approval-02"
+    assert approval.outreach_id == "outreach-02"
+    assert approval.message_commitment == f"sha256:{'5' * 64}"
+    assert approval.channel == "linkedin"
+    assert approval.approved_by == "operator:synthetic-two"
+    assert approval.issued_at == "2026-07-23T06:01:00Z"
+    assert approval.expires_at == "2026-07-23T18:00:00Z"
+    assert approval.status == "approved"
+    assert repository.get_approval("approval-missing") is None
+
+
+def test_get_execution_receipt_resolves_unique_operation_and_decodes_contract(
+    db_session: Session,
+) -> None:
+    db_session.add(
+        JobSearchExecutionReceiptDB(
+            receipt_id="opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+            operation_id="operation-synthetic-01",
+            event_id="opaque:v1:EEEEEEEEEEEEEEEEEEEEEE",
+            status="succeeded",
+            reason_code=None,
+            payload=VALID_RECEIPT_PAYLOAD,
+            receipt_hash=VALID_RECEIPT_HASH,
+            created_at=NOW,
+            completed_at=NOW
+            + timedelta(minutes=1, seconds=47, microseconds=999_999),
+        )
+    )
+    db_session.commit()
+
+    repository = JobSearchProjectionRepository(db_session)
+    evidence = repository.get_execution_receipt("operation-synthetic-01")
+
+    assert evidence is not None
+    assert evidence.operation_id == "operation-synthetic-01"
+    assert evidence.receipt.receipt_id == "opaque:v1:RRRRRRRRRRRRRRRRRRRRRR"
+    assert evidence.receipt.event_id == "opaque:v1:EEEEEEEEEEEEEEEEEEEEEE"
+    assert evidence.receipt.status == "succeeded"
+    assert evidence.receipt.reason_code is None
+    assert (
+        evidence.receipt.signature.key_id
+        == "pairwise:v1:KKKKKKKKKKKKKKKKKKKKKK"
+    )
+    assert evidence.receipt_hash == VALID_RECEIPT_HASH
+    assert evidence.created_at == "2026-07-23T06:00:00Z"
+    assert evidence.completed_at == "2026-07-23T06:01:00Z"
+    assert evidence.proof_status == "server-recorded"
+    assert repository.get_execution_receipt("operation-missing") is None
+
+
+def test_get_execution_receipt_rejects_row_completion_from_different_signed_minute(
+    db_session: Session,
+) -> None:
+    row = JobSearchExecutionReceiptDB(
+        receipt_id="opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+        operation_id="operation-synthetic-01",
+        event_id="opaque:v1:EEEEEEEEEEEEEEEEEEEEEE",
+        status="succeeded",
+        reason_code=None,
+        payload=VALID_RECEIPT_PAYLOAD,
+        receipt_hash=VALID_RECEIPT_HASH,
+        created_at=NOW,
+        completed_at=NOW + timedelta(minutes=1, seconds=30),
+    )
+    db_session.add(row)
+    db_session.commit()
+
+    row.completed_at = NOW + timedelta(minutes=2)
+    db_session.commit()
+
+    repository = JobSearchProjectionRepository(db_session)
+    with pytest.raises(
+        ValueError,
+        match="completed_at does not match signed payload",
+    ):
+        repository.get_execution_receipt(row.operation_id)
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        JobSearchApprovalDB(
+            approval_id="approval-invalid",
+            outreach_id="outreach-01",
+            message_commitment="not-a-commitment",
+            channel="gmail",
+            approved_by="operator:synthetic",
+            issued_at=NOW,
+            expires_at=NOW + timedelta(hours=24),
+            status="approved",
+        ),
+        JobSearchExecutionReceiptDB(
+            receipt_id="opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+            operation_id="operation-invalid",
+            event_id="opaque:v1:EEEEEEEEEEEEEEEEEEEEEE",
+            status="succeeded",
+            reason_code=None,
+            payload={
+                key: value
+                for key, value in VALID_RECEIPT_PAYLOAD.items()
+                if key != "signature"
+            },
+            receipt_hash=VALID_RECEIPT_HASH,
+            created_at=NOW,
+            completed_at=NOW + timedelta(minutes=1),
+        ),
+    ],
+)
+def test_governed_evidence_reads_reject_malformed_rows(
+    db_session: Session,
+    row: object,
+) -> None:
+    db_session.add(row)
+    db_session.commit()
+    repository = JobSearchProjectionRepository(db_session)
+
+    with pytest.raises(ValueError):
+        if isinstance(row, JobSearchApprovalDB):
+            repository.get_approval(row.approval_id)
+        else:
+            repository.get_execution_receipt(row.operation_id)

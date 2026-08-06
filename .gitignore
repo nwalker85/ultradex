@@ -58,9 +58,16 @@ docker-compose.override.yml
 .coverage
 htmlcov/
 
+# Node.js
+/node_modules/
+/sdk/typescript/node_modules/
+
 # OS
 .DS_Store
 Thumbs.db
 
 # Serena
 .serena/
+
+# Internal agent artifacts
+.superpowers/sdd/

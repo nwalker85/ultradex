@@ -4,18 +4,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, Literal, TypeVar
 
 from ravenhelm_contracts import (
     ApplicationV1,
+    ExecutionReceiptV1,
     OpportunityV1,
     OutreachV1,
     ProjectionFreshnessV1,
     RelationshipV1,
 )
+from ravenhelm_contracts.accountability_v1 import hash_execution_receipt_v1
 from ravenhelm_contracts.jobsearch_v1 import (
     APPLICATION_STATUSES_V1,
+    DIGEST_PATTERN_V1,
     OPPORTUNITY_STATUSES_V1,
+    OUTREACH_CHANNELS_V1,
     OUTREACH_STATUSES_V1,
 )
 from sqlalchemy import select
@@ -23,6 +27,8 @@ from sqlalchemy.orm import Session
 
 from .jobsearch_models import (
     ApplicationProjectionDB,
+    JobSearchApprovalDB,
+    JobSearchExecutionReceiptDB,
     OpportunityProjectionDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
@@ -51,6 +57,37 @@ class ProjectedOutreach:
     freshness: ProjectionFreshnessV1
 
 
+@dataclass(frozen=True)
+class ApprovalEvidence:
+    """Validated evidence for one exact outreach approval mandate."""
+
+    approval_id: str
+    outreach_id: str
+    message_commitment: str
+    channel: str
+    approved_by: str
+    issued_at: str
+    expires_at: str
+    status: Literal["approved", "expired", "revoked"]
+
+
+@dataclass(frozen=True)
+class ExecutionReceiptEvidence:
+    """A structurally valid receipt recorded by this server.
+
+    Receipt presence and canonical hashing do not establish signature validity.
+    Signature verification requires a trusted public-key registry that this read
+    surface does not currently provide.
+    """
+
+    operation_id: str
+    receipt: ExecutionReceiptV1
+    receipt_hash: str
+    created_at: str
+    completed_at: str
+    proof_status: Literal["server-recorded"] = "server-recorded"
+
+
 def _bounded_first(first: int) -> int:
     if isinstance(first, bool) or not isinstance(first, int) or not 1 <= first <= 100:
         raise ValueError("first must be an integer between 1 and 100")
@@ -63,6 +100,25 @@ def _timestamp(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _signed_receipt_timestamp(value: str, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, ValueError) as error:
+        raise ValueError(f"receipt payload {field} must be a timestamp") from error
+    if parsed.tzinfo is None:
+        raise ValueError(f"receipt payload {field} must include a timezone")
+    parsed = parsed.astimezone(timezone.utc)
+    if parsed.second != 0 or parsed.microsecond != 0:
+        raise ValueError(f"receipt payload {field} must be a whole UTC minute")
+    return parsed
+
+
+def _whole_utc_minute(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).replace(second=0, microsecond=0)
+
+
 def _validate_status(
     status: str | None,
     allowed: frozenset[str],
@@ -72,6 +128,12 @@ def _validate_status(
     ):
         raise ValueError("status is not valid for this projection")
     return status
+
+
+def _required_string(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} must be a non-empty string")
+    return value
 
 
 class JobSearchProjectionRepository:
@@ -119,6 +181,29 @@ class JobSearchProjectionRepository:
         if row is None:
             return None
         return self._outreach(row, self._checkpoint("outreach"))
+
+    def get_approval(self, approval_id: str) -> ApprovalEvidence | None:
+        row = self._session.scalar(
+            select(JobSearchApprovalDB).where(
+                JobSearchApprovalDB.approval_id == approval_id
+            )
+        )
+        if row is None:
+            return None
+        return self._approval(row)
+
+    def get_execution_receipt(
+        self,
+        operation_id: str,
+    ) -> ExecutionReceiptEvidence | None:
+        row = self._session.scalar(
+            select(JobSearchExecutionReceiptDB).where(
+                JobSearchExecutionReceiptDB.operation_id == operation_id
+            )
+        )
+        if row is None:
+            return None
+        return self._execution_receipt(row)
 
     def list_opportunities(
         self,
@@ -369,4 +454,69 @@ class JobSearchProjectionRepository:
             freshness=ProjectionFreshnessV1.from_dict(
                 self._required_freshness(row, freshness)
             ),
+        )
+
+    @staticmethod
+    def _approval(row: JobSearchApprovalDB) -> ApprovalEvidence:
+        approval_id = _required_string(row.approval_id, "approval_id")
+        outreach_id = _required_string(row.outreach_id, "outreach_id")
+        commitment = _required_string(
+            row.message_commitment,
+            "message_commitment",
+        )
+        if DIGEST_PATTERN_V1.fullmatch(commitment) is None:
+            raise ValueError("message_commitment must be a sha256 commitment")
+        channel = _required_string(row.channel, "channel")
+        if channel not in OUTREACH_CHANNELS_V1:
+            raise ValueError("channel is not valid for outreach approval")
+        approved_by = _required_string(row.approved_by, "approved_by")
+        status = _required_string(row.status, "status")
+        if status not in {"approved", "expired", "revoked"}:
+            raise ValueError("status is not valid for outreach approval")
+        issued_at = row.issued_at
+        expires_at = row.expires_at
+        if issued_at is None or expires_at is None or expires_at <= issued_at:
+            raise ValueError("approval expiry must follow issuance")
+        return ApprovalEvidence(
+            approval_id=approval_id,
+            outreach_id=outreach_id,
+            message_commitment=commitment,
+            channel=channel,
+            approved_by=approved_by,
+            issued_at=_timestamp(issued_at),
+            expires_at=_timestamp(expires_at),
+            status=status,  # type: ignore[arg-type]
+        )
+
+    @staticmethod
+    def _execution_receipt(
+        row: JobSearchExecutionReceiptDB,
+    ) -> ExecutionReceiptEvidence:
+        operation_id = _required_string(row.operation_id, "operation_id")
+        receipt = ExecutionReceiptV1.from_dict(row.payload)
+        if receipt.receipt_id != row.receipt_id:
+            raise ValueError("receipt payload does not match receipt_id")
+        if receipt.event_id != row.event_id:
+            raise ValueError("receipt payload does not match event_id")
+        if receipt.status != row.status:
+            raise ValueError("receipt payload does not match status")
+        if receipt.reason_code != row.reason_code:
+            raise ValueError("receipt payload does not match reason_code")
+        receipt_hash = hash_execution_receipt_v1(receipt)
+        if receipt_hash != row.receipt_hash:
+            raise ValueError("receipt payload does not match receipt_hash")
+        signed_completed_at = _signed_receipt_timestamp(
+            receipt.completed_at,
+            "completed_at",
+        )
+        if _whole_utc_minute(row.completed_at) != signed_completed_at:
+            raise ValueError(
+                "receipt row completed_at does not match signed payload"
+            )
+        return ExecutionReceiptEvidence(
+            operation_id=operation_id,
+            receipt=receipt,
+            receipt_hash=receipt_hash,
+            created_at=_timestamp(row.created_at),
+            completed_at=_timestamp(signed_completed_at),
         )

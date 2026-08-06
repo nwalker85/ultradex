@@ -15,10 +15,14 @@ set -euo pipefail
 REPO="${REPO:-$(basename "$PWD")}"
 
 # === STACK DETECTION ===
-if [ -f package.json ]; then
-  STACK="npm"
-elif [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+# Ultradex (and similar) may ship a root workspace package.json alongside the
+# Python service. Prefer Python when its manifests exist so python_gate +
+# ultradex_ts_gates run; otherwise a workspace-only package.json steals the
+# stack into npm_gate and skips pytest.
+if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
   STACK="python"
+elif [ -f package.json ]; then
+  STACK="npm"
 else
   STACK="unrecognized"
 fi

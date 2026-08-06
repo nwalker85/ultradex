@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -11,6 +11,8 @@ from api.main import app
 from core import get_db
 from core.jobsearch_models import (
     ApplicationProjectionDB,
+    JobSearchApprovalDB,
+    JobSearchExecutionReceiptDB,
     OpportunityProjectionDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
@@ -20,6 +22,59 @@ from core.jobsearch_models import (
 
 NOW = datetime(2026, 7, 23, 6, 0, tzinfo=timezone.utc)
 VALID_COMMITMENT = f"sha256:{'a' * 64}"
+VALID_RECEIPT_HASH = (
+    "sha256:e18c64598f2b5ed18116c8a00403bba04bb3f219d222377880a66fa56683d145"
+)
+VALID_RECEIPT_PAYLOAD: dict[str, object] = {
+    "contract_version": "accountability.v1",
+    "receipt_id": "opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+    "event_id": "opaque:v1:EEEEEEEEEEEEEEEEEEEEEE",
+    "stream_pairwise_id": "pairwise:v1:SSSSSSSSSSSSSSSSSSSSSS",
+    "sequence": 1,
+    "subject_pairwise_id": "pairwise:v1:UUUUUUUUUUUUUUUUUUUUUU",
+    "tenant_scope": {
+        "scheme": "hmac_sha256_v1",
+        "purpose": "jobsearch_operation",
+        "digest": (
+            "sha256:"
+            "1111111111111111111111111111111111111111111111111111111111111111"
+        ),
+    },
+    "purpose": "jobsearch_operation",
+    "request_id": "opaque:v1:QQQQQQQQQQQQQQQQQQQQQQ",
+    "idempotency_key": "opaque:v1:IIIIIIIIIIIIIIIIIIIIII",
+    "action_commitment": {
+        "scheme": "hmac_sha256_v1",
+        "purpose": "jobsearch_operation",
+        "digest": (
+            "sha256:"
+            "2222222222222222222222222222222222222222222222222222222222222222"
+        ),
+    },
+    "execution_id": "opaque:v1:XXXXXXXXXXXXXXXXXXXXXX",
+    "executor_pairwise_id": "pairwise:v1:ZZZZZZZZZZZZZZZZZZZZZZ",
+    "status": "succeeded",
+    "started_at": "2026-07-23T06:00:00.000Z",
+    "completed_at": "2026-07-23T06:01:00.000Z",
+    "result_commitment": {
+        "scheme": "hmac_sha256_v1",
+        "purpose": "jobsearch_operation",
+        "digest": (
+            "sha256:"
+            "3333333333333333333333333333333333333333333333333333333333333333"
+        ),
+    },
+    "reason_code": None,
+    "daml_transaction": None,
+    "signature": {
+        "algorithm": "ed25519",
+        "key_id": "pairwise:v1:KKKKKKKKKKKKKKKKKKKKKK",
+        "signature": (
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ),
+    },
+}
 
 
 def _checkpoint(projection_type: str) -> ProjectionCheckpointDB:
@@ -126,6 +181,33 @@ def _outreach(outreach_id: str) -> OutreachProjectionDB:
         projected_at=NOW,
         created_at=NOW,
         updated_at=NOW,
+    )
+
+
+def _approval(approval_id: str, outreach_id: str) -> JobSearchApprovalDB:
+    return JobSearchApprovalDB(
+        approval_id=approval_id,
+        outreach_id=outreach_id,
+        message_commitment=VALID_COMMITMENT,
+        channel="gmail",
+        approved_by="operator:synthetic",
+        issued_at=NOW,
+        expires_at=NOW + timedelta(hours=24),
+        status="approved",
+    )
+
+
+def _receipt(operation_id: str) -> JobSearchExecutionReceiptDB:
+    return JobSearchExecutionReceiptDB(
+        receipt_id="opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+        operation_id=operation_id,
+        event_id="opaque:v1:EEEEEEEEEEEEEEEEEEEEEE",
+        status="succeeded",
+        reason_code=None,
+        payload=VALID_RECEIPT_PAYLOAD,
+        receipt_hash=VALID_RECEIPT_HASH,
+        created_at=NOW,
+        completed_at=NOW + timedelta(minutes=1),
     )
 
 
@@ -478,6 +560,137 @@ async def test_empty_unprojected_pages_have_unknown_freshness(db_session):
 
 
 @pytest.mark.asyncio
+async def test_governed_evidence_reads_resolve_exact_bindings_and_recorded_receipt(
+    db_session,
+):
+    db_session.add_all(
+        [
+            _approval("approval-01", "outreach-01"),
+            _approval("approval-02", "outreach-02"),
+            _receipt("operation-synthetic-01"),
+        ]
+    )
+    db_session.commit()
+
+    result = await schema.execute(
+        """
+        query GovernedEvidence($approvalId: String!, $operationId: String!) {
+          approval(id: $approvalId) {
+            approvalId
+            outreachId
+            messageCommitment
+            channel
+            approvedBy
+            issuedAt
+            expiresAt
+            status
+          }
+          executionReceipt(operationId: $operationId) {
+            receiptId
+            operationId
+            eventId
+            status
+            reasonCode
+            payload
+            receiptHash
+            createdAt
+            completedAt
+            proofStatus
+          }
+        }
+        """,
+        variable_values={
+            "approvalId": "approval-02",
+            "operationId": "operation-synthetic-01",
+        },
+        context_value={"db": db_session},
+    )
+
+    assert result.errors is None
+    assert result.data["approval"] == {
+        "approvalId": "approval-02",
+        "outreachId": "outreach-02",
+        "messageCommitment": VALID_COMMITMENT,
+        "channel": "gmail",
+        "approvedBy": "operator:synthetic",
+        "issuedAt": "2026-07-23T06:00:00+00:00",
+        "expiresAt": "2026-07-24T06:00:00+00:00",
+        "status": "approved",
+    }
+    receipt = result.data["executionReceipt"]
+    assert receipt == {
+        "receiptId": "opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+        "operationId": "operation-synthetic-01",
+        "eventId": "opaque:v1:EEEEEEEEEEEEEEEEEEEEEE",
+        "status": "succeeded",
+        "reasonCode": None,
+        "payload": VALID_RECEIPT_PAYLOAD,
+        "receiptHash": VALID_RECEIPT_HASH,
+        "createdAt": "2026-07-23T06:00:00+00:00",
+        "completedAt": "2026-07-23T06:01:00+00:00",
+        "proofStatus": "server-recorded",
+    }
+    assert receipt["payload"]["signature"] == {
+        "algorithm": "ed25519",
+        "key_id": "pairwise:v1:KKKKKKKKKKKKKKKKKKKKKK",
+        "signature": (
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ),
+    }
+
+
+@pytest.mark.asyncio
+async def test_execution_receipt_rejects_row_completion_from_different_signed_minute(
+    db_session,
+):
+    row = _receipt("operation-synthetic-01")
+    db_session.add(row)
+    db_session.commit()
+
+    row.completed_at = NOW + timedelta(minutes=2)
+    db_session.commit()
+
+    result = await schema.execute(
+        """
+        query {
+          executionReceipt(operationId: "operation-synthetic-01") {
+            receiptId
+            completedAt
+          }
+        }
+        """,
+        context_value={"db": db_session},
+    )
+
+    assert result.data == {"executionReceipt": None}
+    assert result.errors is not None
+    assert (
+        "completed_at does not match signed payload"
+        in result.errors[0].message
+    )
+
+
+@pytest.mark.asyncio
+async def test_governed_evidence_reads_return_null_for_unknown_exact_ids(db_session):
+    result = await schema.execute(
+        """
+        query {
+          approval(id: "approval-missing") { approvalId }
+          executionReceipt(operationId: "operation-missing") { receiptId }
+        }
+        """,
+        context_value={"db": db_session},
+    )
+
+    assert result.errors is None
+    assert result.data == {
+        "approval": None,
+        "executionReceipt": None,
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "query",
     [
@@ -572,5 +785,65 @@ async def test_authenticated_graphql_route_reads_jobsearch_projection(db_session
                 "opportunityId": "opportunity-http",
                 "employer": "HTTP Corp",
             }
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_read_only_graphql_route_reads_governed_evidence(
+    db_session,
+    monkeypatch,
+):
+    db_session.add_all(
+        [
+            _approval("approval-http", "outreach-http"),
+            _receipt("operation-http"),
+        ]
+    )
+    db_session.commit()
+    monkeypatch.setenv("ULTRADEX_READ_TOKEN", "read-only-synthetic-token")
+    monkeypatch.setenv("ULTRADEX_READ_ID", "reader:synthetic")
+
+    async def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"Authorization": "Bearer read-only-synthetic-token"},
+        ) as client:
+            response = await client.post(
+                "/api/graphql",
+                json={
+                    "query": (
+                        "query($approvalId: String!, $operationId: String!) { "
+                        "approval(id: $approvalId) { approvalId outreachId } "
+                        "executionReceipt(operationId: $operationId) { "
+                        "receiptId operationId proofStatus } }"
+                    ),
+                    "variables": {
+                        "approvalId": "approval-http",
+                        "operationId": "operation-http",
+                    },
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "data": {
+            "approval": {
+                "approvalId": "approval-http",
+                "outreachId": "outreach-http",
+            },
+            "executionReceipt": {
+                "receiptId": "opaque:v1:RRRRRRRRRRRRRRRRRRRRRR",
+                "operationId": "operation-http",
+                "proofStatus": "server-recorded",
+            },
         }
     }

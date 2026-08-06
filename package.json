@@ -1,0 +1,10 @@
+{
+  "name": "ultradex-workspace",
+  "private": true,
+  "workspaces": [
+    "sdk/typescript"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

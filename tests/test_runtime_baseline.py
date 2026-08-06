@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 import core.database as database_module
 from api import main as api_main
+from api.auth import validate_auth_configuration
 from api.routes.health import health_check_db
 from core.database import Database, get_db
 
@@ -23,6 +24,86 @@ async def test_lifespan_refuses_missing_private_auth_configuration(monkeypatch):
     with pytest.raises(ValueError, match="Missing private auth configuration"):
         async with api_main.lifespan(api_main.app):
             pass
+
+
+@pytest.mark.parametrize(
+    ("present_name", "present_value"),
+    [
+        ("ULTRADEX_COMMAND_TOKEN", "command-only-token"),
+        ("ULTRADEX_COMMAND_ID", "career-operator:fixture"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_lifespan_refuses_partially_configured_command_credential(
+    monkeypatch,
+    present_name,
+    present_value,
+):
+    monkeypatch.setenv("DEX_API_KEY", "test-dex")
+    monkeypatch.setenv("CLAUDE_API_KEY", "test-claude")
+    monkeypatch.delenv("ULTRADEX_COMMAND_TOKEN", raising=False)
+    monkeypatch.delenv("ULTRADEX_COMMAND_ID", raising=False)
+    monkeypatch.setenv(present_name, present_value)
+    monkeypatch.setattr(
+        api_main,
+        "init_database",
+        lambda _url: pytest.fail(
+            "startup continued past partial command auth configuration"
+        ),
+    )
+
+    with pytest.raises(ValueError, match="command auth configuration"):
+        async with api_main.lifespan(api_main.app):
+            pass
+
+
+def test_private_auth_configuration_allows_absent_command_pair(monkeypatch):
+    monkeypatch.delenv("ULTRADEX_COMMAND_TOKEN", raising=False)
+    monkeypatch.delenv("ULTRADEX_COMMAND_ID", raising=False)
+
+    validate_auth_configuration()
+
+
+@pytest.mark.parametrize(
+    ("first_token_name", "second_token_name"),
+    [
+        ("ULTRADEX_API_TOKEN", "ULTRADEX_COMMAND_TOKEN"),
+        ("ULTRADEX_COMMAND_TOKEN", "ULTRADEX_READ_TOKEN"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_lifespan_rejects_cross_role_token_collisions_before_database_startup(
+    monkeypatch,
+    first_token_name,
+    second_token_name,
+):
+    duplicate_token = "duplicate-role-token"
+    monkeypatch.setenv("DEX_API_KEY", "test-dex")
+    monkeypatch.setenv("CLAUDE_API_KEY", "test-claude")
+    monkeypatch.setenv("ULTRADEX_API_TOKEN", "full-operator-token")
+    monkeypatch.setenv("ULTRADEX_OPERATOR_ID", "operator:fixture")
+    monkeypatch.setenv("ULTRADEX_COMMAND_TOKEN", "command-only-token")
+    monkeypatch.setenv("ULTRADEX_COMMAND_ID", "career-operator:fixture")
+    monkeypatch.setenv("ULTRADEX_READ_TOKEN", "read-only-token")
+    monkeypatch.setenv("ULTRADEX_READ_ID", "reader:fixture")
+    monkeypatch.setenv(first_token_name, duplicate_token)
+    monkeypatch.setenv(second_token_name, duplicate_token)
+    monkeypatch.setattr(
+        api_main,
+        "init_database",
+        lambda _url: pytest.fail(
+            "startup continued past cross-role token collision"
+        ),
+    )
+
+    with pytest.raises(ValueError) as error:
+        async with api_main.lifespan(api_main.app):
+            pass
+
+    detail = str(error.value)
+    assert first_token_name in detail
+    assert second_token_name in detail
+    assert duplicate_token not in detail
 
 
 @pytest.mark.asyncio

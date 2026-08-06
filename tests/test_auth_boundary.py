@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from fastapi.security import HTTPAuthorizationCredentials
 
+from api.auth import authenticate_principal, validate_auth_configuration
 from api.main import app
 from api.dependencies import get_redis
 from core import OperationEventDB, get_db
@@ -76,6 +78,101 @@ async def test_read_token_cannot_submit_commands(db_session, monkeypatch):
             )
     finally:
         app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("token", "subject", "expected_scopes"),
+    [
+        (
+            "full-operator-token",
+            "operator:fixture",
+            frozenset({"read", "command", "delegation-admin"}),
+        ),
+        (
+            "command-only-token",
+            "career-operator:fixture",
+            frozenset({"read", "command"}),
+        ),
+        (
+            "read-only-token",
+            "reader:fixture",
+            frozenset({"read"}),
+        ),
+    ],
+)
+def test_distinct_coexisting_credentials_retain_exact_scopes(
+    monkeypatch,
+    token,
+    subject,
+    expected_scopes,
+):
+    monkeypatch.setenv("ULTRADEX_API_TOKEN", "full-operator-token")
+    monkeypatch.setenv("ULTRADEX_OPERATOR_ID", "operator:fixture")
+    monkeypatch.setenv("ULTRADEX_COMMAND_TOKEN", "command-only-token")
+    monkeypatch.setenv("ULTRADEX_COMMAND_ID", "career-operator:fixture")
+    monkeypatch.setenv("ULTRADEX_READ_TOKEN", "read-only-token")
+    monkeypatch.setenv("ULTRADEX_READ_ID", "reader:fixture")
+
+    principal = authenticate_principal(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    )
+
+    assert principal.subject == subject
+    assert principal.scopes == expected_scopes
+
+
+def test_absent_command_pair_preserves_legacy_operator_precedence_for_equal_tokens(
+    monkeypatch,
+):
+    monkeypatch.setenv("ULTRADEX_API_TOKEN", "legacy-shared-token")
+    monkeypatch.setenv("ULTRADEX_OPERATOR_ID", "operator:fixture")
+    monkeypatch.setenv("ULTRADEX_READ_TOKEN", "legacy-shared-token")
+    monkeypatch.setenv("ULTRADEX_READ_ID", "reader:fixture")
+    monkeypatch.delenv("ULTRADEX_COMMAND_TOKEN", raising=False)
+    monkeypatch.delenv("ULTRADEX_COMMAND_ID", raising=False)
+
+    validate_auth_configuration()
+    principal = authenticate_principal(
+        HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="legacy-shared-token",
+        )
+    )
+
+    assert principal.subject == "operator:fixture"
+    assert principal.scopes == frozenset({"read", "command", "delegation-admin"})
+
+
+def test_command_credential_has_exactly_read_and_command_scopes(monkeypatch):
+    monkeypatch.setenv("ULTRADEX_COMMAND_TOKEN", "command-only-token")
+    monkeypatch.setenv("ULTRADEX_COMMAND_ID", "career-operator:fixture")
+
+    principal = authenticate_principal(
+        HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="command-only-token",
+        )
+    )
+
+    assert principal.subject == "career-operator:fixture"
+    assert principal.scopes == frozenset({"read", "command"})
+
+
+@pytest.mark.asyncio
+async def test_command_credential_cannot_access_delegation_administration(
+    monkeypatch,
+):
+    monkeypatch.setenv("ULTRADEX_COMMAND_TOKEN", "command-only-token")
+    monkeypatch.setenv("ULTRADEX_COMMAND_ID", "career-operator:fixture")
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/api/v2/delegations",
+            headers={"Authorization": "Bearer command-only-token"},
+        )
 
     assert response.status_code == 403
 

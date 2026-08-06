@@ -16,8 +16,10 @@ from core import (
 )
 from api.auth import AuthenticatedPrincipal, require_read_principal
 from .jobsearch_types import (
+    ApprovalEvidence,
     Application,
     ApplicationPage,
+    ExecutionReceiptEvidence,
     Opportunity,
     OpportunityPage,
     Outreach,
@@ -222,6 +224,36 @@ class Query:
             opportunity_id=opportunity_id,
         )
         return OutreachPage.from_page(page)
+
+    @strawberry.field
+    def approval(
+        self,
+        info: strawberry.Info,
+        id: str,
+    ) -> ApprovalEvidence | None:
+        projection = JobSearchProjectionRepository(
+            info.context["db"]
+        ).get_approval(id)
+        return (
+            None
+            if projection is None
+            else ApprovalEvidence.from_projection(projection)
+        )
+
+    @strawberry.field
+    def execution_receipt(
+        self,
+        info: strawberry.Info,
+        operation_id: str,
+    ) -> ExecutionReceiptEvidence | None:
+        projection = JobSearchProjectionRepository(
+            info.context["db"]
+        ).get_execution_receipt(operation_id)
+        return (
+            None
+            if projection is None
+            else ExecutionReceiptEvidence.from_projection(projection)
+        )
 
     @strawberry.field
     def operation(self, info: strawberry.Info, id: str) -> Optional[OperationGQL]:
