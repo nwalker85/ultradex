@@ -84,7 +84,7 @@ class OperationGQL:
             started_at=op.started_at,
             completed_at=op.completed_at,
             result=op.result,
-            error=op.error,
+            error=(None if op.error is None or op.error.strip() == "" else op.error),
             # U01 has no durable projector checkpoint. Null is more truthful
             # than manufacturing a zero-lag/fresh projection at request time.
             freshness=None,
