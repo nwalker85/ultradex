@@ -1,0 +1,58 @@
+name: forgejo-ci
+
+# Sovereign CI — the quality gate (Profiles A/B/C). On every PR to main, SSH to
+# the forge host and run the repo's .forgejo/test-on-host.sh (unit + optional
+# integration) against a clone at the PR head. Branch protection on main requires
+# the check `forgejo-ci / test (pull_request)`, so a red build blocks the merge.
+#
+# Runs via SSH-to-host (not in-container) because the runner's job container has
+# no docker CLI, and testcontainers-based integration tests need the host docker
+# socket. Faithful to heimdall's .forgejo/workflows/ci.yml.
+#
+# Required secrets: HRAFNGUD_SSH_KEY, CI_GIT_TOKEN.
+# Host-side PyPI: $HOME/services/forge-toolkit/.forgejo-netrc (Forgejo package read token).
+
+on:
+  pull_request:
+    branches:
+      - main
+      # Stacked PR bases (#4→#3, #5→#4) — without these, only PRs targeting main run CI.
+      - "feat/**"
+      - "fix/**"
+      - "forge-**"
+
+env:
+  HOST: hrafngud.ravenmask.net
+
+jobs:
+  test:
+    runs-on: docker
+    steps:
+      - name: Install host SSH key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.HRAFNGUD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Run tests on host
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          FJTOKEN: ${{ secrets.CI_GIT_TOKEN }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          FJTOKEN_B64=$(printf '%s' "$FJTOKEN" | base64 | tr -d '\n')
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+            "ravenmask@${HOST}" HEAD_REF="$HEAD_REF" SHA="$SHA" FJTOKEN_B64="$FJTOKEN_B64" REPO="$REPO" \
+            bash -seuo pipefail <<'REMOTE'
+          FJTOKEN=$(printf '%s' "$FJTOKEN_B64" | base64 -d)
+          WORK=$(mktemp -d); trap 'rm -rf "$WORK" 2>/dev/null || true' EXIT
+          # Forgejo sets head_ref to "#<n>" (not a branch name) — always checkout PR SHA.
+          git clone -q --depth 1 --no-checkout \
+            "http://nate:${FJTOKEN}@hrafngud.ravenmask.net:3300/nate/${REPO}.git" "$WORK/h"
+          cd "$WORK/h"
+          git fetch --depth 1 origin "$SHA"
+          git checkout -q "$SHA"
+          echo "testing $REPO @ $(git rev-parse --short HEAD) (PR head $SHA, ref ${HEAD_REF:-?})"
+          REPO="$REPO" bash .forgejo/test-on-host.sh
+          REMOTE

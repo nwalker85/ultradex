@@ -8,9 +8,13 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (ravenhelm-contracts from Forgejo PyPI via BuildKit netrc secret).
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=secret,id=forgejo_netrc,target=/root/.netrc,required=false \
+    pip install --no-cache-dir \
+    --trusted-host hrafngud.ravenmask.net \
+    --extra-index-url http://hrafngud.ravenmask.net:3300/api/packages/nate/pypi/simple/ \
+    -r requirements.txt
 
 # Copy application
 COPY . .

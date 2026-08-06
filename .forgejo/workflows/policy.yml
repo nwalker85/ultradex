@@ -5,7 +5,11 @@ name: forgejo-policy
 # this status alongside the profile CI gate.
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+      - "forge-**"
 
 jobs:
   policy:
