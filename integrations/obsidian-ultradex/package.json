@@ -1,0 +1,20 @@
+{
+  "name": "obsidian-ultradex",
+  "version": "0.1.0",
+  "description": "Secure Obsidian operator client for Ultradex",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc --noEmit && node esbuild.config.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ultradex/sdk": "0.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "obsidian": "1.11.4",
+    "typescript": "5.9.3",
+    "vitest": "3.2.6"
+  }
+}

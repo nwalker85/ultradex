@@ -30,10 +30,16 @@ installation are separate, explicitly approved rollout steps.
    - refused, failed, and unverifiable terminal states are not thrown away or
      relabeled as generic failures;
    - operation and correlation IDs remain visible and copyable.
-6. Outreach approval binds the exact outreach ID, message commitment, and
-   channel. The plugin never invents or weakens that mandate.
+6. Outreach approval binds the exact currently projected `pending_approval`
+   outreach ID, message commitment, and derived channel, then rechecks that same
+   binding immediately before submission. Missing or changed bindings fail
+   closed without an SDK request. The plugin never invents or weakens that
+   mandate.
 7. The plugin stores no API token in ordinary plugin settings or vault notes.
-   Use Obsidian SecretStorage when available and fail closed otherwise.
+   Use Obsidian SecretStorage when available and fail closed otherwise. The only
+   mutation-state persistence exception is the bounded, versioned minimal
+   command-custody journal defined below; it also lives in SecretStorage, under
+   a stable ID distinct from the token, and never in plugin data or vault notes.
 8. Refresh swaps one validated aggregate snapshot atomically. An error keeps the
    last known snapshot, marks it stale, and prevents ambiguous mutation state.
 9. Agent tests and fixtures contain only synthetic data. Real career, contact,
@@ -140,6 +146,16 @@ configuration in plugin data:
 If SecretStorage is unavailable, the plugin shows setup instructions and refuses
 network access instead of persisting a plaintext token.
 
+SecretStorage also holds a separate
+`ultradex-command-custody-v1` journal. Its version-1 envelope retains at most 50
+recent entries and allowlists only command name, idempotency and correlation
+IDs, actual network-attempt time, returned contract/operation/approval IDs when
+known, and the current custody/outcome state. It never stores command
+parameters, message content, message commitment, raw errors, reason text,
+lifecycle payloads, receipt payloads or signatures, contact/employer data, or
+the API token. Malformed, wrong-version, oversized, or extra-field data is
+ignored.
+
 ## Operator experience
 
 The plugin registers one deferred `ItemView` and four commands:
@@ -151,8 +167,10 @@ The plugin registers one deferred `ItemView` and four commands:
 
 The native view contains:
 
-1. **Connection strip** — base URL, authentication state, last successful
-   refresh, aggregate freshness, and stale/offline warning.
+1. **Connection strip** — sanitized configured service origin, authentication
+   state, last successful refresh, aggregate freshness, and stale/offline
+   warning. URL user information, credentials, paths, queries, and fragments
+   are not rendered.
 2. **Command bar** — explicit forms for safe local commands. Submission shows
    the idempotency key before confirmation.
 3. **Pipeline panels** — opportunities, applications, relationships, and
@@ -161,8 +179,10 @@ The native view contains:
    operation and correlation IDs.
 5. **Governed outcome card** — accepted, pending, approval-required, refused,
    failed, unverifiable, or succeeded states use distinct labels and retain the
-   server reason code. Terminal cards resolve the recorded receipt by operation
-   ID; outreach cards resolve their exact approval contract.
+   server reason code. A separate closed evidence label (`pending`, `complete`,
+   or `unverifiable`) prevents incomplete reads from overwriting known terminal
+   outcomes. Terminal cards resolve the recorded receipt by operation ID;
+   outreach cards resolve their exact approval contract.
 
 The receipt card shows the recorded receipt hash, signature key ID, signed
 payload, and audit reference. It must distinguish `server-recorded` from
@@ -186,10 +206,37 @@ UI:
 - unbound source, scoring, relationship, or sending adapters surface their
   governed refusal rather than pretending the feature is unavailable locally.
 
-After submission the plugin immediately records the returned handle in memory,
-refreshes the operation, and polls bounded lifecycle pages until a terminal state
-or the user-visible timeout. Timeout is not failure: the card becomes
-`unverifiable` locally while preserving the operation ID for later refresh.
+Immediately before the SDK network call, the plugin writes a minimal
+`submitting` custody entry with the actual attempt time. After submission it
+updates custody with the returned handle, refreshes the operation, and polls
+bounded lifecycle pages until a terminal state has its required approval and
+receipt evidence or the user-visible timeout. A timeout or read failure changes
+evidence status to `unverifiable` while preserving any known
+approval-required, refused, failed, or succeeded outcome and the operation ID
+for later refresh. Only a genuinely unknown nonterminal or pre-handle outcome
+uses governed state `unverifiable`. A terminal operation missing required
+evidence continues bounded polling and remains manually refreshable if evidence
+is still incomplete.
+
+On restart, a `submitting` entry without an operation ID restores as
+`completion unknown`, `unverifiable`, and non-resubmittable. The content-free
+journal does not persist evidence status: records with an operation ID safely
+restore with pending evidence, while pre-handle records restore as
+unverifiable. Other entries restore without their non-persistent
+form/projection/evidence bodies. Exact operation, lifecycle, approval, and
+receipt evidence is reacquired through the SDK by operation ID only after the
+operator view opens. Closing a view
+permanently stops its controller/tracker instance: an already in-flight command
+may finish only the minimal custody update and cannot start timers, reads, or
+late DOM updates.
+
+Obsidian's native `requestUrl` cannot be cancelled. If a command request times
+out before a handle is returned, the transport marks
+`requestMayHaveCompleted: true`. The controller must retain the idempotency key,
+correlation ID, command, and submitted-at time, render `completion unknown`, and
+prohibit automatic or one-click resubmission. Until Ultradex exposes lookup by
+idempotency/correlation, this state cannot be reconciled to an operation ID and
+must remain visibly unverifiable.
 
 ## Snapshot and failure semantics
 
@@ -202,7 +249,8 @@ valid. Concurrent refreshes collapse into one in-flight request.
 - Partial/schema failure: retain last snapshot; show which projection failed.
 - Successful refresh: atomically swap; derive aggregate freshness from the oldest
   projection checkpoint.
-- Manual clear: remove only the plugin cache, never vault files or server data.
+- Manual clear: remove only the projection snapshot cache, never custody,
+  SecretStorage credentials, vault files, or server data.
 
 ## Testing
 
@@ -218,6 +266,12 @@ Tests name the production break they catch and exercise real SDK/store behavior:
 - Store tests prove partial refresh never replaces a good snapshot.
 - Mutation-controller tests prove refused/unverifiable handles remain visible and
   polling never performs a second submission.
+- Custody tests prove the pre-network write, actual attempt timestamp, strict
+  allowlist and bounds, malformed-data rejection, restart recovery, deferred
+  evidence reacquisition, and snapshot-clear separation.
+- DOM tests drive all nine native forms, exact confirmation bindings, actionable
+  RFC3339/sha256 validation, refresh single-flight state, lifecycle ID copy,
+  focus restoration, and live announcements.
 - UI tests render the real view/controller against synthetic SDK data; mocks stop
   at Obsidian or network boundaries.
 - An isolated integration test runs one synthetic

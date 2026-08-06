@@ -2,7 +2,8 @@
   "name": "ultradex-workspace",
   "private": true,
   "workspaces": [
-    "sdk/typescript"
+    "sdk/typescript",
+    "integrations/obsidian-ultradex"
   ],
   "engines": {
     "node": ">=20"

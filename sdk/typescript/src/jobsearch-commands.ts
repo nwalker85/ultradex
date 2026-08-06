@@ -189,7 +189,11 @@ export class JobSearchCommandExecutor {
       response = await this.transport.request(request);
     } catch (error) {
       if (error instanceof UltradexTransportTimeout) {
-        throw new UltradexTimeoutError(error.timeoutMs, { cause: error });
+        throw new UltradexTimeoutError(
+          error.timeoutMs,
+          error.requestMayHaveCompleted,
+          { cause: error },
+        );
       }
       if (error instanceof UltradexError) {
         throw error;

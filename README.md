@@ -64,6 +64,18 @@ the service never invents a source position or zero-lag state. Raw connector con
 such as Gmail bodies, LinkedIn messages, Dex notes, resumes, prompts, completions,
 drafts, and outreach text is never persisted or returned by these projections.
 
+## Obsidian operator client
+
+The Obsidian integration is a mutation-aware Ultradex operator client built on
+the official TypeScript SDK. The current delivery includes an isolated
+API-to-JetStream-to-receipt proof and a fixed installer for a synthetic test
+vault only. It does not install into a working vault, open Obsidian, deploy the
+service, or authorize production mutations.
+
+See [Ultradex Obsidian Operator](docs/obsidian-operator.md) for the synthetic
+runtime boundary, fixed test-vault installer, SecretStorage enrollment,
+governed-command semantics, and the remaining production gates.
+
 ## Python SDK
 
 ```python

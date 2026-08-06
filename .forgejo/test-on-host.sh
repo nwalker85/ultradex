@@ -308,17 +308,17 @@ ultradex_ts_gates() {
       echo "plugin present but sdk/typescript missing — cannot resolve @ultradex/sdk" >&2
       exit 1
     fi
-    PLUGIN_DIR="$repo_root/integrations/obsidian-ultradex"
-    SDK_DIR="$repo_root/sdk/typescript"
+    # Mount the whole repo so plugin tests can import ../../../sdk/typescript/tests/fixtures.js
     docker run --rm --network=host \
-      -v "$SDK_DIR":/sdk -v "$PLUGIN_DIR":/work -w /work \
+      -v "$repo_root":/repo -w /repo/integrations/obsidian-ultradex \
       -e CI=true \
       node:22 bash -ceu '
-        cd /sdk
+        cd /repo/sdk/typescript
         npm install --ignore-scripts --no-audit --no-fund
         npm run build
-        cd /work
-        npm install --ignore-scripts --no-audit --no-fund "file:/sdk"
+        cd /repo/integrations/obsidian-ultradex
+        npm install --ignore-scripts --no-audit --no-fund "file:/repo/sdk/typescript"
+        echo "::: build :::"; npm run build
         echo "::: unit :::"; npm test
       '
   else
@@ -338,8 +338,11 @@ case "$STACK" in
     ;;
   python)
     SERVICE_SLUG="" # Single-repo: no suffix
-    python_gate
+    # Build/test TypeScript surfaces first when present so checked-out bind mounts
+    # (e.g. integrations/obsidian-ultradex/main.js) exist before Python tests that
+    # install the Obsidian plugin from those artifacts.
     ultradex_ts_gates "$PWD"
+    python_gate
     ;;
   *)
     # No root manifest: check for monorepo services.map

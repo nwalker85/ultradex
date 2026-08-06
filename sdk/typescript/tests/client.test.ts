@@ -200,7 +200,7 @@ describe("private request executor contracts", () => {
   });
 
   it("maps an adapter timeout signal to the final SDK timeout error", async () => {
-    const timeout = new UltradexTransportTimeout(2_500);
+    const timeout = new UltradexTransportTimeout(2_500, false);
     const transport = new RecordingTransport([
       { error: timeout },
     ]);
@@ -211,6 +211,7 @@ describe("private request executor contracts", () => {
       name: "UltradexTimeoutError",
       code: "timeout",
       timeoutMs: 2_500,
+      requestMayHaveCompleted: false,
       cause: timeout,
     });
     await expect(pending).rejects.toBeInstanceOf(UltradexTimeoutError);

@@ -25,6 +25,7 @@ export class UltradexTransportTimeout extends Error {
 
   constructor(
     readonly timeoutMs: number,
+    readonly requestMayHaveCompleted: boolean,
     options?: { readonly cause?: unknown },
   ) {
     super(
@@ -71,6 +72,7 @@ export class UltradexTimeoutError extends UltradexError {
 
   constructor(
     readonly timeoutMs: number,
+    readonly requestMayHaveCompleted: boolean,
     options?: { readonly cause?: unknown },
   ) {
     super(
@@ -293,7 +295,11 @@ export class UltradexRequestExecutor {
       response = await this.transport.request(request);
     } catch (error) {
       if (error instanceof UltradexTransportTimeout) {
-        throw new UltradexTimeoutError(error.timeoutMs, { cause: error });
+        throw new UltradexTimeoutError(
+          error.timeoutMs,
+          error.requestMayHaveCompleted,
+          { cause: error },
+        );
       }
       if (error instanceof UltradexError) {
         throw error;

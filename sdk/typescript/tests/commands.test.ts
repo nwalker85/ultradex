@@ -6,6 +6,8 @@ import {
   UltradexClient,
   UltradexHttpError,
   UltradexSchemaError,
+  UltradexTimeoutError,
+  UltradexTransportTimeout,
   type ContractHandle,
   type JobSearchCommand,
   type UltradexRequest,
@@ -29,6 +31,17 @@ class RecordingTransport implements UltradexTransport {
       throw new Error("Synthetic transport queue exhausted");
     }
     return response;
+  }
+}
+
+class RejectingTransport implements UltradexTransport {
+  readonly requests: UltradexRequest[] = [];
+
+  constructor(private readonly error: unknown) {}
+
+  async request(request: UltradexRequest): Promise<UltradexTransportResponse> {
+    this.requests.push(request);
+    throw this.error;
   }
 }
 
@@ -351,6 +364,33 @@ describe("closed governed job-search command catalog", () => {
 });
 
 describe("governed command outcomes", () => {
+  it("preserves completion ambiguity when a governed command transport times out", async () => {
+    const timeout = new UltradexTransportTimeout(2_500, true);
+    const transport = new RejectingTransport(timeout);
+    const client = createClient(transport);
+
+    const pending = client.submitOpportunityScore(
+      {
+        opportunityId: "opportunity-synthetic-001",
+        lens: "executive",
+      },
+      {
+        idempotencyKey: "idempotency-timeout-synthetic",
+        correlationId: "correlation-timeout-synthetic",
+      },
+    );
+
+    await expect(pending).rejects.toMatchObject({
+      name: "UltradexTimeoutError",
+      code: "timeout",
+      timeoutMs: 2_500,
+      requestMayHaveCompleted: true,
+      cause: timeout,
+    });
+    await expect(pending).rejects.toBeInstanceOf(UltradexTimeoutError);
+    expect(transport.requests).toHaveLength(1);
+  });
+
   it("returns validated accepted, failed, unverifiable, and refused handles from 202 and 503", async () => {
     const failed = {
       ...syntheticContractHandleResponse,

@@ -1,0 +1,9 @@
+{
+  "id": "ultradex-operator",
+  "name": "Ultradex Operator",
+  "version": "0.1.0",
+  "minAppVersion": "1.11.4",
+  "description": "Inspect Ultradex projections and operate governed workflows from Obsidian.",
+  "author": "Ravenhelm",
+  "isDesktopOnly": false
+}

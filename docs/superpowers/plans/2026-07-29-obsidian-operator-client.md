@@ -169,6 +169,9 @@ Obsidian Plugin API, Docker Compose, NATS JetStream, PostgreSQL, Redis.
   `minAppVersion` to `1.11.4`; SecretStorage first appears in that API. The local
   app verified for this delivery is `1.11.7`.
 - [ ] Implement an SDK transport using Obsidian `requestUrl`.
+- [ ] Preserve native timeout ambiguity: because `requestUrl` is not cancellable,
+  its timeout signal must set `requestMayHaveCompleted: true`, and the SDK's
+  public timeout error must retain that flag.
 - [ ] Register lightweight commands on load and defer the view until first use.
 - [ ] Run: `npm test --workspace obsidian-ultradex`.
 - [ ] Run: `npm run build --workspace obsidian-ultradex`.
@@ -203,20 +206,35 @@ Obsidian Plugin API, Docker Compose, NATS JetStream, PostgreSQL, Redis.
 **Files:**
 
 - Create: `integrations/obsidian-ultradex/src/mutations/command-controller.ts`
+- Create: `integrations/obsidian-ultradex/src/mutations/command-custody-journal.ts`
 - Create: `integrations/obsidian-ultradex/src/mutations/command-forms.ts`
 - Create: `integrations/obsidian-ultradex/src/mutations/operation-tracker.ts`
 - Modify: `integrations/obsidian-ultradex/src/views/monitor-view.ts`
 - Modify: `integrations/obsidian-ultradex/src/components/contract-state.ts`
 - Modify: `integrations/obsidian-ultradex/styles.css`
 - Create: `integrations/obsidian-ultradex/tests/command-controller.test.ts`
+- Create: `integrations/obsidian-ultradex/tests/command-custody-journal.test.ts`
+- Create: `integrations/obsidian-ultradex/tests/command-forms.test.ts`
 - Create: `integrations/obsidian-ultradex/tests/operation-tracker.test.ts`
 
 - [ ] Write failing tests proving one UI submission causes one SDK submission,
   operation polling cannot resubmit, and a refusal remains a refusal.
+- [ ] Write a failing timeout test proving a non-cancellable command request can
+  time out before returning a handle, retains command/idempotency/correlation
+  evidence as `completion unknown`, and cannot be automatically or one-click
+  resubmitted.
 - [ ] Render explicit forms for the nine canonical command methods.
-- [ ] Show the idempotency key and consequence summary before confirmation.
+- [ ] Drive the real DOM submit mapping for all nine forms and reject invalid
+  RFC3339 timestamps and sha256 commitments with actionable field guidance.
+- [ ] Show the idempotency key, consequence summary, and exact sanitized bound
+  fields before confirmation. Approval and send review must show outreach ID,
+  full commitment, channel, and exact approval contract where applicable.
 - [ ] Require a second explicit confirmation for `outreach.send`.
 - [ ] Track accepted handles through bounded operation/event polling.
+- [ ] Share one per-operation single-flight registry between automatic polling
+  and manual refresh, expose refresh-in-progress state, and retry terminal
+  operations until required approval/receipt evidence is complete or bounded
+  attempts end.
 - [ ] Preserve refused, failed, and unverifiable outcomes with server reason,
   operation ID, correlation ID, and events.
 - [ ] Resolve and render the exact approval contract and terminal execution
@@ -224,6 +242,21 @@ Obsidian Plugin API, Docker Compose, NATS JetStream, PostgreSQL, Redis.
   verification while no trusted public-key registry exists.
 - [ ] Disable mutations when authentication, freshness, or connectivity is
   ambiguous.
+- [ ] Persist only a bounded version-1 minimal custody journal in the distinct
+  `ultradex-command-custody-v1` SecretStorage entry. Write `submitting` with the
+  actual attempt time before the network call; never persist parameters,
+  commitments/content, raw errors/reasons, event or receipt bodies/signatures,
+  career/contact data, or tokens.
+- [ ] Restore interrupted pre-handle attempts as completion unknown and
+  non-resubmittable. Restore other custody records without bodies and reacquire
+  evidence by operation ID only when the view opens. Clearing projection cache
+  must not clear custody.
+- [ ] Prove close/disposal suppresses follow-on reads, timers, and late DOM
+  updates while allowing only the final minimal custody update.
+- [ ] Render accepted, pending, running, approval-required, refused, failed,
+  unverifiable, and succeeded outcomes distinctly; make lifecycle event IDs
+  visible/copyable without exposing payloads; preserve logical keyboard focus
+  and announce submitting/new outcomes.
 - [ ] Run plugin test and build commands from Task 5.
 - [ ] Commit: `feat: add governed mutations to Obsidian operator`.
 
