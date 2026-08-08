@@ -1,0 +1,48 @@
+:global(html),
+:global(body) {
+  margin: 0;
+  min-height: 100%;
+  background: var(--rh-bg);
+  color: var(--rh-ink);
+}
+
+:global(*) {
+  box-sizing: border-box;
+}
+
+.ccc-shell {
+  display: grid;
+  gap: var(--rh-space-24);
+  padding: var(--rh-space-24);
+}
+
+/* The top bar sits above the scroll container rather than overlapping it, so
+   this only needs a breathing gutter, not clearance for the bar's height. */
+.ccc-shell section[id] {
+  scroll-margin-top: var(--rh-space-16);
+}
+
+.ccc-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.ccc-grid--two {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.ccc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ccc-empty {
+  color: var(--rh-muted);
+  margin: 0;
+}
+
+.ccc-mono {
+  font-family: var(--rh-mono);
+  font-size: 0.8rem;
+}
