@@ -91,10 +91,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
+# CORS — browser Origin is a full URL (e.g. http://127.0.0.1:5175), not a bare host.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["localhost", "127.0.0.1"],
+    allow_origins=[
+        "http://127.0.0.1:5175",
+        "http://localhost:5175",
+        "http://127.0.0.1:8080",
+        "http://localhost:8080",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
