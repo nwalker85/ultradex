@@ -127,7 +127,14 @@ class JobSearchPullConsumer:
 
 
 async def run_jobsearch_worker() -> None:
-    """Run the safe worker; external adapter ports remain unbound."""
+    """Run the safe worker.
+
+    Adapter ports are unbound by default. WP5 (ADR-014, PRD F4) binds exactly
+    one: the Dex-delta source adapter, and only when REDIS_URL provides the
+    sweep stash it proves claims from. Every other port stays unbound.
+    """
+    from .jobsearch_sources import DexDeltaSourceAdapter, RedisSweepStash
+
     nats_url = os.getenv("NATS_URL")
     if not nats_url:
         raise ValueError("NATS_URL is required for the job-search worker")
@@ -142,7 +149,16 @@ async def run_jobsearch_worker() -> None:
     consumer = None
     try:
         await publisher.connect()
-        executor = JobSearchExecutor(session, ReceiptIssuer.from_env())
+        sweep_stash = RedisSweepStash.from_env()
+        executor = JobSearchExecutor(
+            session,
+            ReceiptIssuer.from_env(),
+            source_adapter=(
+                DexDeltaSourceAdapter(stash=sweep_stash)
+                if sweep_stash is not None
+                else None
+            ),
+        )
         worker = JobSearchWorker(executor, publisher)
         outbox = JobSearchOutboxDispatcher(session, publisher)
         consumer = JobSearchPullConsumer(

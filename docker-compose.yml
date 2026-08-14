@@ -112,6 +112,9 @@ services:
     environment:
       DATABASE_URL: postgresql://ultradex:ultradex_dev_password@postgres:5432/ultradex
       NATS_URL: nats://nats:4222
+      # WP5: the Dex-delta source adapter proves sweep claims from this stash;
+      # without it the adapter stays unbound and sources.ingest fails closed.
+      REDIS_URL: redis://redis:6379
       ULTRADEX_ACCOUNTABILITY_HMAC_KEY: ${ULTRADEX_ACCOUNTABILITY_HMAC_KEY}
       ULTRADEX_RECEIPT_ED25519_PRIVATE_KEY: ${ULTRADEX_RECEIPT_ED25519_PRIVATE_KEY}
       ULTRADEX_RECEIPT_KEY_ID: ${ULTRADEX_RECEIPT_KEY_ID}
