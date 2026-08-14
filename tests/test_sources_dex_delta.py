@@ -112,7 +112,9 @@ class TestAdapterProvesTheClaim:
             tenant_id="tenant:test", operation_id="op:1", contract_id="contract:1",
             correlation_id="corr:1", causation_id="cause:1", execution_id="exec:1",
             actor_id="operator:test", request_id="req:1", trace_id="trace:1",
-            service_name="ultradex-test",
+            service_name="ultradex-test", service_version="0.0.0-test",
+            deployment_sha="testsha", environment="test",
+            contract_version="1.0.0", schema_version="1.0.0",
         )
         return JobSearchCommandV1(
             command_id="cmd:1", command="sources.ingest", actor_id="operator:test",
