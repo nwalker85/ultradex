@@ -1,0 +1,45 @@
+{
+  "name": "@ravenhelm/ui-svelte",
+  "version": "0.1.0",
+  "description": "Svelte 5 operator primitives on accepted Ravenhelm UI tokens.",
+  "type": "module",
+  "private": false,
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "AGENTS.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/lib/index.ts",
+      "svelte": "./src/lib/index.ts",
+      "default": "./src/lib/index.ts"
+    },
+    "./styles.css": "./src/lib/styles.css",
+    "./tokens.css": "./src/lib/tokens.css"
+  },
+  "svelte": "./src/lib/index.ts",
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "svelte": "5.55.0",
+    "svelte-check": "4.4.0",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "ssh://git@hrafngud.taild7ad1f.ts.net:2222/nate/ravenhelm-ui-svelte.git"
+  },
+  "publishConfig": {
+    "registry": "http://hrafngud.taild7ad1f.ts.net:3300/api/packages/nate/npm/"
+  }
+}

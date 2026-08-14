@@ -64,17 +64,25 @@ the service never invents a source position or zero-lag state. Raw connector con
 such as Gmail bodies, LinkedIn messages, Dex notes, resumes, prompts, completions,
 drafts, and outreach text is never persisted or returned by these projections.
 
-## Obsidian operator client
+## Career Command Center glass (local Svelte)
 
-The Obsidian integration is a mutation-aware Ultradex operator client built on
-the official TypeScript SDK. The current delivery includes an isolated
-API-to-JetStream-to-receipt proof and a fixed installer for a synthetic test
-vault only. It does not install into a working vault, open Obsidian, deploy the
-service, or authorize production mutations.
+The career Director surface is **`apps/web`** — a minimal SvelteKit static SPA in a
+local container. It consumes `@ultradex/sdk` and `@ravenhelm/ui-svelte`. ML and
+scoring stay on the Python Ultradex worker.
 
-See [Ultradex Obsidian Operator](docs/obsidian-operator.md) for the synthetic
-runtime boundary, fixed test-vault installer, SecretStorage enrollment,
-governed-command semantics, and the remaining production gates.
+```bash
+npm install
+npm run build --workspace=@ultradex/sdk
+npm run dev --workspace=ccc-glass
+```
+
+See [apps/web/README.md](apps/web/README.md).
+
+## Obsidian operator client (DEPRECATED)
+
+**Frozen 2026-08-05** (ADR-014 amendment). Obsidian is not the career Director.
+See `integrations/obsidian-ultradex/DEPRECATED.md`. Historical docs remain at
+[Ultradex Obsidian Operator](docs/obsidian-operator.md).
 
 ## Python SDK
 

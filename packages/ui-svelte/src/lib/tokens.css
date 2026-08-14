@@ -1,0 +1,129 @@
+/* Generated from accepted Figma evidence — do not hand-edit.
+ * Checkpoint: design/evidence/figma/2026-08-02
+ * Manifest checksum: bb72e63834ddfd6be4597653278a1b9f286321baa49f6e594e6e3ce423f8bf5d
+ * ADR: docs/architecture/decisions/0002-scoped-figma-acceptance.md
+ * Regenerate: npm run generate:tokens
+ */
+
+:root,
+[data-theme="dark"],
+.rh-theme-dark {
+  --rh-primitive-neutral-950: #0e1014;
+  --rh-primitive-neutral-50: #f8f9fb;
+  --rh-primitive-neutral-925: #12141a;
+  --rh-primitive-white-1000: #ffffff;
+  --rh-primitive-neutral-900: #171a21;
+  --rh-primitive-neutral-100: #f0f2f5;
+  --rh-primitive-neutral-800: #2a2a2a;
+  --rh-primitive-neutral-300: #d1d5db;
+  --rh-primitive-accent-400: #7fa3c8;
+  --rh-primitive-accent-600: #5a87ae;
+  --rh-primitive-neutral-200: #e6eaf2;
+  --rh-primitive-neutral-500: #8690a5;
+  --rh-primitive-neutral-600: #6b7280;
+  --rh-primitive-success-400: #5bb890;
+  --rh-primitive-success-600: #4a9e78;
+  --rh-primitive-warning-400: #c4a45e;
+  --rh-primitive-warning-600: #a8903f;
+  --rh-primitive-danger-400: #c47272;
+  --rh-primitive-danger-600: #ad5f5f;
+  --rh-primitive-glass-dark-80: rgba(18, 20, 26, 0.8);
+  --rh-primitive-glass-light-80: rgba(255, 255, 255, 0.8);
+  --rh-primitive-black-24: rgba(0, 0, 0, 0.24);
+  --rh-color-background-canvas: #0e1014;
+  --rh-color-surface-base: #12141a;
+  --rh-color-surface-raised: #171a21;
+  --rh-color-edge-subtle: #2a2a2a;
+  --rh-color-accent-primary: #7fa3c8;
+  --rh-color-text-primary: #e6eaf2;
+  --rh-color-text-muted: #8690a5;
+  --rh-color-status-success: #5bb890;
+  --rh-color-status-warning: #c4a45e;
+  --rh-color-status-danger: #c47272;
+  --rh-color-glass-panel: rgba(18, 20, 26, 0.8);
+  --rh-typography-family-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --rh-typography-family-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --rh-typography-family-mono: "JetBrains Mono", ui-monospace, monospace;
+  --rh-typography-size-heading-medium: 16px;
+  --rh-typography-weight-semibold: 600;
+  --rh-typography-size-body-small: 12px;
+  --rh-space-4: 4px;
+  --rh-space-8: 8px;
+  --rh-space-12: 12px;
+  --rh-space-16: 16px;
+  --rh-space-24: 24px;
+  --rh-radius-6: 6px;
+  --rh-radius-8: 8px;
+  --rh-radius-full: 999px;
+  --rh-density-dashboard-compact: 5;
+  --rh-motion-duration-fast: 120ms;
+  --rh-motion-duration-standard: 180ms;
+  --rh-motion-easing-standard: cubic-bezier(0.2,0,0,1);
+  --rh-role-action-risk-read-only: read_only;
+  --rh-role-action-risk-internal-write: internal_write;
+  --rh-role-action-risk-external-effect: external_effect;
+  --rh-component-agent-work-surface-root-background: #0e1014;
+  --rh-component-agent-work-surface-panel-background: #12141a;
+  --rh-component-agent-work-surface-panel-radius: 8px;
+}
+
+[data-theme="light"],
+.rh-theme-light {
+  --rh-primitive-neutral-950: #0e1014;
+  --rh-primitive-neutral-50: #f8f9fb;
+  --rh-primitive-neutral-925: #12141a;
+  --rh-primitive-white-1000: #ffffff;
+  --rh-primitive-neutral-900: #171a21;
+  --rh-primitive-neutral-100: #f0f2f5;
+  --rh-primitive-neutral-800: #2a2a2a;
+  --rh-primitive-neutral-300: #d1d5db;
+  --rh-primitive-accent-400: #7fa3c8;
+  --rh-primitive-accent-600: #5a87ae;
+  --rh-primitive-neutral-200: #e6eaf2;
+  --rh-primitive-neutral-500: #8690a5;
+  --rh-primitive-neutral-600: #6b7280;
+  --rh-primitive-success-400: #5bb890;
+  --rh-primitive-success-600: #4a9e78;
+  --rh-primitive-warning-400: #c4a45e;
+  --rh-primitive-warning-600: #a8903f;
+  --rh-primitive-danger-400: #c47272;
+  --rh-primitive-danger-600: #ad5f5f;
+  --rh-primitive-glass-dark-80: rgba(18, 20, 26, 0.8);
+  --rh-primitive-glass-light-80: rgba(255, 255, 255, 0.8);
+  --rh-primitive-black-24: rgba(0, 0, 0, 0.24);
+  --rh-color-background-canvas: #f8f9fb;
+  --rh-color-surface-base: #ffffff;
+  --rh-color-surface-raised: #f0f2f5;
+  --rh-color-edge-subtle: #d1d5db;
+  --rh-color-accent-primary: #5a87ae;
+  --rh-color-text-primary: #0e1014;
+  --rh-color-text-muted: #6b7280;
+  --rh-color-status-success: #4a9e78;
+  --rh-color-status-warning: #a8903f;
+  --rh-color-status-danger: #ad5f5f;
+  --rh-color-glass-panel: rgba(255, 255, 255, 0.8);
+  --rh-typography-family-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --rh-typography-family-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --rh-typography-family-mono: "JetBrains Mono", ui-monospace, monospace;
+  --rh-typography-size-heading-medium: 16px;
+  --rh-typography-weight-semibold: 600;
+  --rh-typography-size-body-small: 12px;
+  --rh-space-4: 4px;
+  --rh-space-8: 8px;
+  --rh-space-12: 12px;
+  --rh-space-16: 16px;
+  --rh-space-24: 24px;
+  --rh-radius-6: 6px;
+  --rh-radius-8: 8px;
+  --rh-radius-full: 999px;
+  --rh-density-dashboard-compact: 5;
+  --rh-motion-duration-fast: 120ms;
+  --rh-motion-duration-standard: 180ms;
+  --rh-motion-easing-standard: cubic-bezier(0.2,0,0,1);
+  --rh-role-action-risk-read-only: read_only;
+  --rh-role-action-risk-internal-write: internal_write;
+  --rh-role-action-risk-external-effect: external_effect;
+  --rh-component-agent-work-surface-root-background: #f8f9fb;
+  --rh-component-agent-work-surface-panel-background: #ffffff;
+  --rh-component-agent-work-surface-panel-radius: 8px;
+}

@@ -3,6 +3,8 @@
   "private": true,
   "workspaces": [
     "sdk/typescript",
+    "packages/ui-svelte",
+    "apps/web",
     "integrations/obsidian-ultradex"
   ],
   "engines": {

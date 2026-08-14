@@ -4,17 +4,18 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
+# Packaging dirs at repo root only — do not ignore apps/*/src/lib or packages/*/src/lib
+/lib/
+/lib64/
+/build/
+/dist/
+/var/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
-var/
 wheels/
 pip-wheel-metadata/
 share/python-wheels/
@@ -59,10 +60,10 @@ docker-compose.override.yml
 htmlcov/
 
 # Node.js
-/node_modules/
-/sdk/typescript/node_modules/
+node_modules/
 /integrations/obsidian-ultradex/main.js
-/integrations/obsidian-ultradex/node_modules/
+apps/web/.svelte-kit/
+apps/web/build/
 
 # OS
 .DS_Store
@@ -73,3 +74,5 @@ Thumbs.db
 
 # Internal agent artifacts
 .superpowers/sdd/
+dist/
+.gstack/
