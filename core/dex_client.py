@@ -9,37 +9,63 @@ from .models import ContactBase
 class DexClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.base_url = "https://api.getdex.com/api/rest"
+        # api.getdex.com lost its SNI mapping on Google's ghs frontend
+        # (2026-08-14, dead globally); Dex's current API lives on
+        # api.prod.getdex.com/v1 with Bearer auth.
+        self.base_url = "https://api.prod.getdex.com/v1"
         self.headers = {
-            "x-hasura-dex-api-key": api_key,
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
     
     async def fetch_all_contacts(self) -> List[ContactBase]:
-        """Fetch all contacts from Dex with pagination"""
+        """Fetch all contacts from Dex with cursor pagination.
+
+        /v1 ignores limit/offset/page entirely (verified 2026-08-14: every
+        combination returns the same 500-item first page) and paginates only
+        via data.nextCursor. Offset-style looping therefore never terminates
+        — both guards below fail loudly rather than spin.
+        """
         contacts = []
-        offset = 0
-        limit = 100
-        
+        seen_ids = set()
+        cursor = None
+        max_pages = 100  # 50k contacts; far above the ~2.2k expected
+
         async with httpx.AsyncClient(timeout=30) as client:
-            while True:
-                url = f"{self.base_url}/contacts?limit={limit}&offset={offset}"
-                response = await client.get(url, headers=self.headers)
+            for _ in range(max_pages):
+                params = {"cursor": cursor} if cursor else {}
+                response = await client.get(
+                    f"{self.base_url}/contacts", params=params, headers=self.headers
+                )
                 response.raise_for_status()
-                
+
                 data = response.json()
-                batch = data.get("data", [])
-                
-                for contact_data in batch:
+                # /v1 envelope: {"error": false, "data": {"items": [...], "nextCursor": ...}}
+                # (the legacy /api/rest surface returned {"data": [...]}).
+                payload = data.get("data", {})
+                batch = payload.get("items", []) if isinstance(payload, dict) else payload
+
+                new_items = [c for c in batch if c.get("id") not in seen_ids]
+                if batch and not new_items:
+                    raise RuntimeError(
+                        "Dex /v1 returned an already-seen page: cursor param not "
+                        "honored; aborting instead of looping"
+                    )
+
+                for contact_data in new_items:
+                    seen_ids.add(contact_data.get("id"))
                     contact = self._parse_contact(contact_data)
                     if contact:
                         contacts.append(contact)
-                
-                if len(batch) < limit:
+
+                cursor = payload.get("nextCursor") if isinstance(payload, dict) else None
+                if not cursor or not batch:
                     break
-                
-                offset += limit
-        
+            else:
+                raise RuntimeError(
+                    f"Dex pagination exceeded {max_pages} pages; refusing to continue"
+                )
+
         return contacts
     
     async def write_note(self, contact_id: str, note_content: str) -> bool:
@@ -73,8 +99,9 @@ class DexClient:
             return None
     
     def _get_full_name(self, data: dict) -> str:
-        first = data.get("first_name", "").strip()
-        last = data.get("last_name", "").strip()
+        # /v1 sends explicit nulls, so .get(key, "") still yields None.
+        first = (data.get("first_name") or "").strip()
+        last = (data.get("last_name") or "").strip()
         name = f"{first} {last}".strip()
         return name or "Unknown"
     

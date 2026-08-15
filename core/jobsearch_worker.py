@@ -107,7 +107,11 @@ class JobSearchPullConsumer:
                 batch=self._batch_size,
                 timeout=self._fetch_timeout_seconds,
             )
-        except NATSTimeoutError:
+        except (NATSTimeoutError, asyncio.TimeoutError):
+            # nats-py's JetStream fetch raises plain asyncio.TimeoutError on
+            # some empty-poll paths (js/client.py _fetch_n), not its own
+            # TimeoutError subclass — an idle queue killed the worker container
+            # until 2026-08-15. An empty poll is normal; keep polling.
             return 0
         for message in messages:
             await self._worker.handle_message(message)
