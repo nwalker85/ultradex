@@ -135,6 +135,48 @@ async def test_graphql_filters_operation_projection_without_mutations(db_session
 
 
 @pytest.mark.asyncio
+async def test_graphql_operation_timestamps_include_utc_offset(db_session):
+    """Naive DB timestamps must serialize with a timezone for the Obsidian SDK."""
+    db_session.add(
+        OperationDB(
+            id="op-tz",
+            correlation_id="corr-tz",
+            command="sync",
+            status="completed",
+            created_at=datetime(2026, 7, 22, 12, 0, 0),
+            started_at=datetime(2026, 7, 22, 12, 0, 1),
+            completed_at=datetime(2026, 7, 22, 12, 0, 2),
+            error="",
+        )
+    )
+    db_session.commit()
+
+    result = await schema.execute(
+        """
+        query {
+          operations(limit: 1) {
+            id
+            createdAt
+            startedAt
+            completedAt
+            error
+          }
+        }
+        """,
+        context_value={"db": db_session},
+    )
+
+    assert result.errors is None
+    row = result.data["operations"][0]
+    assert row["id"] == "op-tz"
+    assert row["error"] is None
+    for key in ("createdAt", "startedAt", "completedAt"):
+        value = row[key]
+        assert isinstance(value, str)
+        assert value.endswith("+00:00") or value.endswith("Z"), value
+
+
+@pytest.mark.asyncio
 async def test_mounted_graphql_route_uses_the_database_dependency(db_session):
     db_session.add(
         OperationDB(

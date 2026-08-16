@@ -1,6 +1,6 @@
 """GraphQL schema for Ultradex"""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 import strawberry
 from fastapi import Depends
@@ -27,6 +27,20 @@ from .jobsearch_types import (
     Relationship,
     RelationshipPage,
 )
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Coerce DB naive timestamps to UTC-aware for RFC 3339 GraphQL serialization.
+
+    `operations.*` columns are `timestamp without time zone`. Strawberry emits
+    naive values without an offset, which fails the Obsidian SDK isoTimestamp
+    contract (requires Z or ±HH:MM). Treat naive rows as UTC.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 async def get_graphql_context(
@@ -80,9 +94,9 @@ class OperationGQL:
             correlation_id=op.correlation_id,
             command=op.command,
             status=op.status,
-            created_at=op.created_at,
-            started_at=op.started_at,
-            completed_at=op.completed_at,
+            created_at=_as_utc(op.created_at),
+            started_at=_as_utc(op.started_at),
+            completed_at=_as_utc(op.completed_at),
             result=op.result,
             error=(None if op.error is None or op.error.strip() == "" else op.error),
             # U01 has no durable projector checkpoint. Null is more truthful
@@ -321,7 +335,7 @@ class Query:
                 id=e.id,
                 operation_id=e.operation_id,
                 event_type=e.event_type,
-                timestamp=e.timestamp,
+                timestamp=_as_utc(e.timestamp),
                 payload=e.payload
             )
             for e in events
