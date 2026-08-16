@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 import pytest
 
+from ravenhelm_contracts.jobsearch_v1 import IntentWeightsV1
+
 from core.jobsearch_executors import DomainRefusal
 from core.jobsearch_models import IntentProjectionDB, OpportunityProjectionDB
 from core.jobsearch_scoring import DeterministicIntentScorer, compute_score
@@ -28,10 +30,10 @@ def _intent(**overrides) -> IntentProjectionDB:
             {"employer": "IntelePeer", "reason": "former employer"},
         ],
         weights={
-            "role_family_weight": 0.3,
-            "domain_weight": 0.25,
-            "seniority_weight": 0.2,
-            "location_weight": 0.05,
+            "role_family_weight": 30,
+            "domain_weight": 25,
+            "seniority_weight": 20,
+            "location_weight": 5,
         },
         narrative=None,
         source_event_id="event-seed",
@@ -144,10 +146,10 @@ def test_unmatched_opportunity_scores_zero_with_named_misses():
     # would smuggle a small positive score into an otherwise all-miss case.
     intent = _intent(
         weights={
-            "role_family_weight": 0.3,
-            "domain_weight": 0.25,
-            "seniority_weight": 0.2,
-            "location_weight": 0.0,
+            "role_family_weight": 30,
+            "domain_weight": 25,
+            "seniority_weight": 20,
+            "location_weight": 0,
         }
     )
     opportunity = _opportunity(
@@ -167,17 +169,17 @@ def test_unmatched_opportunity_scores_zero_with_named_misses():
 def test_location_unknown_is_neutral_not_a_penalty():
     intent = _intent(
         weights={
-            "role_family_weight": 0.0,
-            "domain_weight": 0.0,
-            "seniority_weight": 0.0,
-            "location_weight": 1.0,
+            "role_family_weight": 0,
+            "domain_weight": 0,
+            "seniority_weight": 0,
+            "location_weight": 100,
         }
     )
     opportunity = _opportunity(location=None)
 
     result = compute_score(opportunity, intent)
 
-    assert result.score == 50.0
+    assert result.score == 50
     assert "opportunity location unknown (neutral)" in result.explanation
 
 
@@ -185,17 +187,42 @@ def test_remote_location_matches_remote_first_preference():
     intent = _intent(
         remote_preference="remote_first",
         weights={
-            "role_family_weight": 0.0,
-            "domain_weight": 0.0,
-            "seniority_weight": 0.0,
-            "location_weight": 1.0,
+            "role_family_weight": 0,
+            "domain_weight": 0,
+            "seniority_weight": 0,
+            "location_weight": 100,
         },
     )
     opportunity = _opportunity(location="Remote (US)")
 
     result = compute_score(opportunity, intent)
 
-    assert result.score == 100.0
+    assert result.score == 100
+
+
+def test_intent_weights_reject_fractional_values_at_the_contract_boundary():
+    """Weights are integer 0-100 percentages, not fractional 0-1 floats —
+    `IntentWeightsV1.from_dict` enforces this (`_integer()`, jobsearch_v1.py),
+    specifically because every `intent.set` command is receipted and
+    `accountability_v1.canonical_accountability_bytes` rejects any float
+    anywhere in a receipted payload. This asserts the contract rejects a
+    fractional weight outright, including whole-number-valued floats like
+    45.0 — `compute_score()` itself never sees a float weight because nothing
+    upstream of it can construct one."""
+    valid = {
+        "role_family_weight": 30,
+        "domain_weight": 25,
+        "seniority_weight": 20,
+        "location_weight": 5,
+    }
+    assert IntentWeightsV1.from_dict(valid).role_family_weight == 30
+
+    with pytest.raises(ValueError):
+        IntentWeightsV1.from_dict({**valid, "role_family_weight": 0.3})
+
+    with pytest.raises(ValueError):
+        # Whole-number-valued floats are rejected too, not just fractions.
+        IntentWeightsV1.from_dict({**valid, "role_family_weight": 45.0})
 
 
 def test_score_is_bounded_and_explanation_within_contract_maximum():

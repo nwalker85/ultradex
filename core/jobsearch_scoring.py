@@ -8,6 +8,16 @@ location/remote compatibility — and treats `employer_exclusions` as a hard
 gate: an excluded employer always scores 0 and is marked excluded in
 `score_explanation`, never ranked alongside genuine candidates.
 
+Weights (`IntentWeightsV1.*_weight`) are integer 0-100 percentages, not
+fractional 0-1 floats — that's the contract's native representation
+(`_integer(value, label, 0, 100)`), chosen precisely so weights stay
+receiptable: `intent.set` commands are receipted via
+`core/jobsearch_receipts.py::ReceiptIssuer.issue()`, and
+`accountability_v1.canonical_accountability_bytes` rejects any Python float
+anywhere in a receipted command or result. Normalization below divides by the
+sum of the four weights, so the 0-100 scale is not required to sum to 100 —
+any relative integer weighting works the same as it would on a 0-1 scale.
+
 `lens` is accepted only for `OpportunityScorer` protocol / command-schema
 compatibility (`opportunities.score` requires it); v1 does not yet use it as
 a scoring dimension. A future lens-aware scorer is an explicit later option
@@ -145,7 +155,7 @@ def _location_match(
 @dataclass(frozen=True)
 class _RuleOutcome:
     label: str
-    weight: float
+    weight: int
     ratio: float
     detail: str
 
@@ -170,7 +180,7 @@ def compute_score(
             risk_flags=("employer_excluded",),
         )
 
-    weights: dict[str, float] = dict(intent.weights or {})
+    weights: dict[str, int] = dict(intent.weights or {})
 
     role_tokens = _tokens(opportunity.role_family) | _tokens(opportunity.title)
     role_ratio, role_target = _best_overlap_ratio(
@@ -200,7 +210,7 @@ def compute_score(
     rules = (
         _RuleOutcome(
             "role_family",
-            float(weights.get("role_family_weight", 0.0)),
+            int(weights.get("role_family_weight", 0)),
             role_ratio,
             (
                 f"best match against '{role_target}'"
@@ -210,7 +220,7 @@ def compute_score(
         ),
         _RuleOutcome(
             "domain",
-            float(weights.get("domain_weight", 0.0)),
+            int(weights.get("domain_weight", 0)),
             domain_ratio,
             (
                 f"matched domain(s): {', '.join(matched_domains)}"
@@ -220,7 +230,7 @@ def compute_score(
         ),
         _RuleOutcome(
             "seniority",
-            float(weights.get("seniority_weight", 0.0)),
+            int(weights.get("seniority_weight", 0)),
             seniority_ratio,
             (
                 "seniority band overlap found in title"
@@ -230,22 +240,19 @@ def compute_score(
         ),
         _RuleOutcome(
             "location",
-            float(weights.get("location_weight", 0.0)),
+            int(weights.get("location_weight", 0)),
             location_ratio,
             location_detail,
         ),
     )
 
+    # Weights are integer 0-100 percentages (see module docstring) that need
+    # not sum to 100 — dividing by their sum normalizes regardless of scale,
+    # same as it would for fractional 0-1 weights. The final score is always
+    # a whole-number 0-100 percentage, matching the weight scale it derives
+    # from and `OpportunityV1.fit_score`'s receiptable-int convention.
     total_weight = sum(rule.weight for rule in rules)
     weighted_sum = sum(rule.weight * rule.ratio for rule in rules)
-    # Scores must stay Python `int`, never `float`: ultradex's accountability
-    # receipt layer (core/jobsearch_receipts.py -> ravenhelm_contracts
-    # accountability_v1.canonical_accountability_bytes) rejects ANY float
-    # anywhere in a receipted command or result payload — only exact ints
-    # (and strings/bools/None/nested structures of those) canonicalize. This
-    # score is embedded in `opportunities.score`/`opportunities.create`/
-    # `intent.set` operation results, which are receipted, so `round()`
-    # (no ndigits -> int) is required here, not `round(x, 1)`.
     score = round(100 * weighted_sum / total_weight) if total_weight > 0 else 0
     score = max(0, min(100, score))
 

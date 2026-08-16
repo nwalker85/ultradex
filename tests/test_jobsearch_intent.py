@@ -52,20 +52,15 @@ def _ratified_intent_parameters(**overrides) -> dict[str, object]:
     250 target. prefer remote or Austin TX. Amelia = SoundHound. No Quant,
     Amelia, SoundHound, Intelepeer."
 
-    NOTE — weights are integer 0/1 here, not the fractional 0.30/0.25/0.20/
-    0.05 suggested in INTENT-SEED-DRAFT §1.6. This is a discovered
-    ravenhelm-contracts defect, not a design choice: `IntentWeightsV1`'s JSON
-    schema permits fractional 0..1 numbers, but every executed command is
-    receipted through `core/jobsearch_receipts.py`, which canonicalizes via
-    `ravenhelm_contracts.accountability_v1.canonical_accountability_bytes` —
-    and that function unconditionally rejects any Python `float` anywhere in
-    the payload (`isinstance(value, float): _fail(...)`), including inside
-    `command.to_dict()`'s nested `weights` object. A fractional weight makes
-    `intent.set` fail at receipt-issuance for every operator, not just this
-    test. See the final report for the flag to Lane E. `compute_score()`'s
-    own unit tests (tests/test_jobsearch_scoring.py) exercise true fractional
-    weights directly against ORM rows, bypassing the receipt layer, to prove
-    the scoring math itself is unaffected by this contract-layer gap.
+    Weights are integer 0-100 percentages (`IntentWeightsV1`'s native
+    representation, enforced by `_integer()` in ravenhelm-contracts —
+    fractional weights are rejected at the contract boundary specifically
+    because every `intent.set` command is receipted, and the accountability
+    receipt layer rejects any float anywhere in a receipted payload; see
+    `tests/test_jobsearch_scoring.py::test_intent_weights_reject_fractional_values_at_the_contract_boundary`).
+    40/30/20/10 here mirrors INTENT-SEED-DRAFT §1.6's suggested relative
+    emphasis (role family highest, then domain, then seniority, location
+    lowest) on the contract's actual integer scale.
     """
     parameters: dict[str, object] = {
         "target_role_families": [
@@ -92,10 +87,10 @@ def _ratified_intent_parameters(**overrides) -> dict[str, object]:
             {"employer": "IntelePeer", "reason": "former employer"},
         ],
         "weights": {
-            "role_family_weight": 1,
-            "domain_weight": 1,
-            "seniority_weight": 1,
-            "location_weight": 0,
+            "role_family_weight": 40,
+            "domain_weight": 30,
+            "seniority_weight": 20,
+            "location_weight": 10,
         },
         "narrative": "Ratified 2026-08-16 per Nate's verbatim rulings.",
     }
