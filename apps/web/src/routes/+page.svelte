@@ -7,6 +7,7 @@
     Operation,
     OpportunityPage,
     OutreachPage,
+    RelationshipPage,
   } from "@ultradex/sdk";
 
   import { createClient, loadConfig, saveConfig, type GlassConfig } from "$lib/client";
@@ -74,6 +75,17 @@
   let outError = $state<unknown>(null);
   let outreachPage = $state<OutreachPage | null>(null);
   let outreachWithExpiry = $state<OutreachWithApprovalExpiry[]>([]);
+
+  // Relationships — loaded ONLY for its page-level freshness (FR-CMD-2,
+  // supervisor decision 2026-08-15: it's the ~2242-contact projection the
+  // ambient Dex sweep feeds, so its staleness is exactly what the strip
+  // exists to surface). No Relationships section renders on this page and
+  // no relationship rows feed the Needs Attention rail — fetched at the
+  // smallest page the SDK allows (`first: 1`) since only `.freshness` is
+  // read.
+  let relLoading = $state(false);
+  let relError = $state<unknown>(null);
+  let relationshipsPage = $state<RelationshipPage | null>(null);
 
   let opsLoading = $state(false);
   let opsError = $state<unknown>(null);
@@ -156,6 +168,22 @@
     }
   }
 
+  async function loadRelationships(): Promise<void> {
+    if (tokenMissing) {
+      return;
+    }
+    relLoading = true;
+    relError = null;
+    try {
+      const client = createClient(config);
+      relationshipsPage = await client.listRelationships({ first: 1 });
+    } catch (cause) {
+      relError = cause;
+    } finally {
+      relLoading = false;
+    }
+  }
+
   async function loadOperations(): Promise<void> {
     if (tokenMissing) {
       return;
@@ -179,6 +207,7 @@
     void loadOpportunities();
     void loadApplications();
     void loadOutreach();
+    void loadRelationships();
     void loadOperations();
   }
 
@@ -187,14 +216,16 @@
     refreshRollUp();
   });
 
-  // FR-CMD-2 — freshness strip over the 3 real projections this page loads
-  // page-level freshness for (Opportunities, Applications, Outreach);
-  // Operations is passed through only so the exclusion is structurally
-  // provable (see command-home.ts), never read for its own freshness.
+  // FR-CMD-2 — freshness strip over all 4 real projections (Opportunities,
+  // Applications, Relationships, Outreach). Relationships is loaded ONLY
+  // for this — no Relationships section renders on this page. Operations
+  // is passed through only so the exclusion is structurally provable (see
+  // command-home.ts), never read for its own freshness.
   const freshnessInput = $derived(
     buildFreshnessRollupInput({
       opportunities: oppPage,
       applications: applicationsPage,
+      relationships: relationshipsPage,
       outreach: outreachPage,
       operations,
     }),
@@ -317,10 +348,25 @@
           <FreshnessTag freshness={applicationsPage?.freshness} />
         </div>
         <div class="ccc-freshness-strip__item">
+          <span class="ccc-freshness-strip__label">Relationships</span>
+          <FreshnessTag freshness={relationshipsPage?.freshness} />
+        </div>
+        <div class="ccc-freshness-strip__item">
           <span class="ccc-freshness-strip__label">Outreach</span>
           <FreshnessTag freshness={outreachPage?.freshness} />
         </div>
       </div>
+      {#if relError}
+        <!-- FR-CMD-1 — Relationships has no rendered section of its own on
+             this page (it is loaded only for freshness, per the FR-CMD-2
+             supervisor decision), so its independent failure surfaces here,
+             inline, rather than silently degrading the strip's
+             Relationships tag to "unavailable" with no explanation. The
+             other three freshness tags above are unaffected. -->
+        <div style="margin-top: 0.75rem">
+          <ErrorBanner error={relError} />
+        </div>
+      {/if}
     </Panel>
 
     <Panel title="Needs Attention" meta={`${needsAttention.length} item(s)`}>

@@ -7,6 +7,7 @@ import type {
   Outreach,
   OutreachPage,
   ProjectionFreshness,
+  RelationshipPage,
 } from "@ultradex/sdk";
 
 /**
@@ -16,11 +17,16 @@ import type {
  * because one of these rules is permanently unfireable against live data
  * today and must not silently vanish for lack of live rows).
  *
- * The four independent, mount-time section loads (FR-CMD-1) are
- * `listOpportunities`, `listApplications`, `listOutreach`, `listOperations`
- * — the exact primary SDK bindings PRD §7's screen inventory names for the
- * Command route. `+page.svelte` fires all four independently and catches
- * each section's failure in isolation; this module never performs I/O.
+ * Command home fires five independent, mount-time loads: `listOpportunities`,
+ * `listApplications`, `listOutreach`, `listOperations` — the primary SDK
+ * bindings PRD §7's screen inventory names for the Command route, each
+ * backing a rendered section — plus `listRelationships`, loaded ONLY for its
+ * page-level freshness (supervisor decision 2026-08-15: Relationships is the
+ * ~2242-contact projection the ambient Dex sweep feeds, and its staleness is
+ * exactly what the freshness strip exists to surface). Relationships has no
+ * rendered section on this page and contributes no rows to the Needs
+ * Attention rail. `+page.svelte` fires all five independently and catches
+ * each one's failure in isolation; this module never performs I/O.
  */
 
 // ---------------------------------------------------------------------------
@@ -32,10 +38,11 @@ import type {
  * page-level freshness metadata: Opportunity, Application, Relationship,
  * Outreach (see `sdk/typescript/src/contracts.ts` — `opportunityPageSchema`,
  * `applicationPageSchema`, `relationshipPageSchema`, `outreachPageSchema`
- * each carry a `freshness: ProjectionFreshness | null`). Command home does
- * not load Relationships (PRD §7 screen inventory), so the strip covers the
- * three real projections it does load — Opportunities, Applications,
- * Outreach — never Operations.
+ * each carry a `freshness: ProjectionFreshness | null`). The strip covers
+ * all four — Relationships is loaded with the smallest page the SDK allows
+ * (`first: 1`) purely to read its freshness; Command home never renders a
+ * Relationships section and never feeds a relationship row into the Needs
+ * Attention rail (FR-CMD-3's ordering is unchanged).
  *
  * `Operation` is not a projection in this sense: `listOperations` returns a
  * bare array with no page-level freshness, and each `Operation.freshness`
@@ -47,6 +54,7 @@ import type {
 export interface CommandFreshnessInput {
   readonly opportunities: ProjectionFreshness | null;
   readonly applications: ProjectionFreshness | null;
+  readonly relationships: ProjectionFreshness | null;
   readonly outreach: ProjectionFreshness | null;
 }
 
@@ -61,12 +69,14 @@ export interface CommandFreshnessInput {
 export function buildFreshnessRollupInput(bundle: {
   readonly opportunities: OpportunityPage | null;
   readonly applications: ApplicationPage | null;
+  readonly relationships: RelationshipPage | null;
   readonly outreach: OutreachPage | null;
   readonly operations: readonly Operation[];
 }): CommandFreshnessInput {
   return {
     opportunities: bundle.opportunities?.freshness ?? null,
     applications: bundle.applications?.freshness ?? null,
+    relationships: bundle.relationships?.freshness ?? null,
     outreach: bundle.outreach?.freshness ?? null,
   };
 }
@@ -100,9 +110,12 @@ const FRESHNESS_SEVERITY: Record<ProjectionFreshness["status"], number> = {
 export function rollupFreshness(
   input: CommandFreshnessInput,
 ): ProjectionFreshness | null {
-  const candidates = [input.opportunities, input.applications, input.outreach].filter(
-    (value): value is ProjectionFreshness => value !== null,
-  );
+  const candidates = [
+    input.opportunities,
+    input.applications,
+    input.relationships,
+    input.outreach,
+  ].filter((value): value is ProjectionFreshness => value !== null);
   if (candidates.length === 0) {
     return null;
   }
@@ -274,7 +287,14 @@ export function overdueApplications(
  * and Outreach are excluded from this gate deliberately: both are
  * permanently empty today regardless of install age (BE-6 / adapter
  * binding, PRD §2.2), so including them would make every session today
- * read as "fresh install."
+ * read as "fresh install." Relationships is excluded for the same reason,
+ * just the opposite direction: it's the ~2242-row projection the ambient
+ * Dex sweep feeds (see the FR-CMD-2 supervisor decision above), so it would
+ * plausibly have rows on any install with a Dex sync configured, install
+ * age notwithstanding — including it would make this gate fire *less*
+ * reliably, not more. It is also not loaded as `readonly Relationship[]`
+ * anywhere on this page (only its page-level freshness is fetched), so
+ * there is nothing here to gate on even mechanically.
  */
 export function isCommandHomeFreshInstall(
   opportunities: readonly Opportunity[],

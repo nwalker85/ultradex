@@ -7,6 +7,7 @@ import type {
   OpportunityPage,
   OutreachPage,
   ProjectionFreshness,
+  RelationshipPage,
 } from "@ultradex/sdk";
 
 import {
@@ -112,11 +113,16 @@ function outPage(overrides: Partial<OutreachPage> = {}): OutreachPage {
   return { items: [], freshness: freshness(), nextCursor: null, ...overrides };
 }
 
+function relPage(overrides: Partial<RelationshipPage> = {}): RelationshipPage {
+  return { items: [], freshness: freshness(), nextCursor: null, ...overrides };
+}
+
 describe("buildFreshnessRollupInput / rollupFreshness (FR-CMD-2)", () => {
-  it("aggregates worst-status-wins across opportunities, applications, outreach", () => {
+  it("aggregates worst-status-wins across opportunities, applications, relationships, outreach", () => {
     const input = buildFreshnessRollupInput({
       opportunities: oppPage({ freshness: freshness({ status: "fresh" }) }),
       applications: appPage({ freshness: freshness({ status: "stale" }) }),
+      relationships: relPage({ freshness: freshness({ status: "fresh" }) }),
       outreach: outPage({ freshness: freshness({ status: "fresh" }) }),
       operations: [],
     });
@@ -127,7 +133,19 @@ describe("buildFreshnessRollupInput / rollupFreshness (FR-CMD-2)", () => {
     const input = buildFreshnessRollupInput({
       opportunities: oppPage({ freshness: freshness({ status: "replaying" }) }),
       applications: appPage({ freshness: freshness({ status: "stale" }) }),
+      relationships: relPage({ freshness: freshness({ status: "fresh" }) }),
       outreach: outPage({ freshness: freshness({ status: "unavailable" }) }),
+      operations: [],
+    });
+    expect(rollupFreshness(input)?.status).toBe("unavailable");
+  });
+
+  it("relationships' own status can be the worst input — it is a real projection in the rollup, not a bystander", () => {
+    const input = buildFreshnessRollupInput({
+      opportunities: oppPage({ freshness: freshness({ status: "fresh" }) }),
+      applications: appPage({ freshness: freshness({ status: "fresh" }) }),
+      relationships: relPage({ freshness: freshness({ status: "unavailable" }) }),
+      outreach: outPage({ freshness: freshness({ status: "fresh" }) }),
       operations: [],
     });
     expect(rollupFreshness(input)?.status).toBe("unavailable");
@@ -137,6 +155,7 @@ describe("buildFreshnessRollupInput / rollupFreshness (FR-CMD-2)", () => {
     const input = buildFreshnessRollupInput({
       opportunities: null,
       applications: appPage({ freshness: freshness({ status: "fresh" }) }),
+      relationships: relPage({ freshness: freshness({ status: "fresh" }) }),
       outreach: outPage({ freshness: freshness({ status: "fresh" }) }),
       operations: [],
     });
@@ -147,6 +166,7 @@ describe("buildFreshnessRollupInput / rollupFreshness (FR-CMD-2)", () => {
     const input = buildFreshnessRollupInput({
       opportunities: null,
       applications: null,
+      relationships: null,
       outreach: null,
       operations: [],
     });
@@ -166,13 +186,19 @@ describe("buildFreshnessRollupInput / rollupFreshness (FR-CMD-2)", () => {
     const input = buildFreshnessRollupInput({
       opportunities: oppPage({ freshness: freshness({ status: "fresh" }) }),
       applications: appPage({ freshness: freshness({ status: "fresh" }) }),
+      relationships: relPage({ freshness: freshness({ status: "fresh" }) }),
       outreach: outPage({ freshness: freshness({ status: "fresh" }) }),
       operations: poisonedOperations,
     });
 
-    // Structural assertion: the rollup input has exactly the three real
+    // Structural assertion: the rollup input has exactly the four real
     // projection keys, never an "operations" key.
-    expect(Object.keys(input).sort()).toEqual(["applications", "opportunities", "outreach"]);
+    expect(Object.keys(input).sort()).toEqual([
+      "applications",
+      "opportunities",
+      "outreach",
+      "relationships",
+    ]);
 
     // Value assertion: the poisoned operation freshness object never shows
     // up anywhere in the rollup input.
