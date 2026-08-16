@@ -31,8 +31,8 @@ Career Command Center (CCC) is the operator UI over Ultradex, an event-sourced, 
 
 | Piece | Fact |
 |---|---|
-| API | uvicorn `api.main:app`, `127.0.0.1:8000`, worktree `~/var/worktrees/ultradex-dashboard-runtime`, branch `local/dashboard-runtime-main` |
-| Glass | Vite dev `127.0.0.1:5175`, worktree `~/var/worktrees/ultradex-ccc-glass`, branch `feat/ccc-local-svelte-glass` |
+| API | uvicorn `api.main:app`, `127.0.0.1:8000`, worktree `~/src/hrafngud.ravenmask.net/nate/ultradex/ultradex-dashboard-runtime` (canonical unit; custody migration 2026-08-14), branch `local/dashboard-runtime-main` |
+| Glass | Vite dev `127.0.0.1:5175`, worktree `~/src/hrafngud.ravenmask.net/nate/ultradex/ccc-glass`, branch `feat/ccc-phase1-routing-and-governed-writes` |
 | GraphQL | `POST /api/graphql`, operator Bearer token |
 | Postgres | container `ultradex-postgres`, db `ultradex`, 17 tables |
 | Also running | `ultradex-redis` (6379), `ultradex-nats` (4222), and a queue worker, PID 50714, `python -m core.jobsearch_worker` |
