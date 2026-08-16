@@ -109,6 +109,9 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ultradex-jobsearch-worker
+    # A worker crash must not silently stall command processing (2026-08-15:
+    # an unhandled idle-poll exception left it exited for hours, unnoticed).
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://ultradex:ultradex_dev_password@postgres:5432/ultradex
       NATS_URL: nats://nats:4222
