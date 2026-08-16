@@ -22,7 +22,10 @@ from sqlalchemy.orm import Session
 from .event_producer import EventProducer
 from .jobsearch_commands import build_jobsearch_event
 from .jobsearch_models import (
+    INTENT_SINGLETON_ID,
+    WORKSPACE_SINGLETON_ID,
     ApplicationProjectionDB,
+    IntentProjectionDB,
     JobSearchApprovalDB,
     JobSearchCommandDB,
     JobSearchEvidenceReferenceDB,
@@ -174,14 +177,25 @@ class JobSearchExecutor:
         self._now = now
         self._max_attempts = max_attempts
         self._handlers: dict[str, Handler] = {
+            "workspace.initialize": self._workspace_initialize,
+            "intent.set": self._intent_set,
             "sources.ingest": self._sources_ingest,
             "opportunities.create": self._opportunities_create,
             "opportunities.score": self._opportunities_score,
+            # applications.create and outreach.cancel below are minimal
+            # refusing stubs. CCC Wave 2 Lane F2 (sibling branch) owns their
+            # real implementation; these exist only so the executor's
+            # command-name invariant is satisfiable on any branch that has
+            # already picked up ravenhelm-contracts 0.5.0. Expect a small,
+            # intentional merge conflict here when F2 lands — replace these
+            # two entries and methods wholesale, do not try to reconcile.
+            "applications.create": self._applications_create,
             "applications.transition": self._applications_transition,
             "relationships.sync": self._relationships_sync,
             "outreach.prepare": self._outreach_prepare,
             "outreach.approve": self._outreach_approve,
             "outreach.send": self._outreach_send,
+            "outreach.cancel": self._outreach_cancel,
             "evidence.export": self._evidence_export,
         }
         if frozenset(self._handlers) != COMMAND_NAMES_V1:
@@ -497,6 +511,7 @@ class JobSearchExecutor:
             ApplicationProjectionDB: "applications",
             RelationshipProjectionDB: "relationships",
             OutreachProjectionDB: "outreach",
+            IntentProjectionDB: "intent",
         }
         projection_type = mapping.get(type(projection))
         if projection_type is None:
@@ -525,6 +540,102 @@ class JobSearchExecutor:
             checkpoint.projected_at = now
             checkpoint.lag_ms = 0
             checkpoint.status = "fresh"
+
+    async def _workspace_initialize(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        # Zero-parameter, idempotent: it always resolves to the same private
+        # workspace identity. No projection table exists for "workspace" in
+        # JOBSEARCH_PROJECTION_TYPES_V1, so there is nothing to stamp; this
+        # command only ever produces its lifecycle event and receipt.
+        return HandlerResult(
+            result={
+                "workspace_id": WORKSPACE_SINGLETON_ID,
+                "status": "initialized",
+            },
+            entity_type="workspace",
+            entity_ref=WORKSPACE_SINGLETON_ID,
+            # JobSearchEventAttributesV1 is closed (additionalProperties:
+            # false) over a fixed key set that has no "workspace status"
+            # concept — the op result above already carries that. Only
+            # `result` (auto-injected by _finalize) belongs here.
+            attributes={},
+        )
+
+    async def _intent_set(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        params = command.parameters
+        now = self._now()
+        row = self._locked_row(IntentProjectionDB, INTENT_SINGLETON_ID)
+        is_new = row is None
+        if row is None:
+            row = IntentProjectionDB(
+                id=INTENT_SINGLETON_ID,
+                source_event_id="pending",
+                source_event_position="pending",
+                projected_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        row.target_role_families = list(params["target_role_families"])
+        row.target_domains = list(params["target_domains"])
+        row.seniority_band = str(params["seniority_band"])
+        row.location_preference = params.get("location_preference")
+        row.remote_preference = str(params["remote_preference"])
+        row.employer_exclusions = list(params["employer_exclusions"])
+        row.weights = dict(params["weights"])
+        row.narrative = params.get("narrative")
+        if is_new:
+            self._db.add(row)
+
+        # Replace-style singleton write: rescore every existing opportunity
+        # against the new targeting record in the same atomic operation, so
+        # the projection never shows opportunities scored against a stale
+        # Intent. Best-effort: if no scorer is bound, the Intent still sets
+        # successfully and opportunities keep whatever score they had.
+        projections: list[object] = [row]
+        rescored_count = 0
+        if self._scorer is not None:
+            opportunities = (
+                self._db.query(OpportunityProjectionDB)
+                .order_by(OpportunityProjectionDB.id.asc())
+                .all()
+            )
+            for opportunity in opportunities:
+                scored = await self._scorer.score(
+                    opportunity.id,
+                    "default",
+                )
+                if not 0 <= scored.score <= 100:
+                    raise ValueError("score must be between 0 and 100")
+                if len(scored.explanation) > 1000:
+                    raise ValueError(
+                        "score explanation exceeds contract maximum"
+                    )
+                opportunity.score = scored.score
+                opportunity.score_explanation = scored.explanation
+                opportunity.risk_flags = list(scored.risk_flags)
+                opportunity.state = (
+                    "qualified" if scored.score >= 80 else "watching"
+                )
+                projections.append(opportunity)
+                rescored_count += 1
+
+        return HandlerResult(
+            result={
+                "intent_id": row.id,
+                "rescored_count": rescored_count,
+            },
+            entity_type="intent",
+            entity_ref=row.id,
+            # JobSearchEventAttributesV1 is closed over a fixed key set with
+            # no "rescored_count" concept — that lives in the op result above.
+            attributes={},
+            projections=tuple(projections),
+        )
 
     async def _sources_ingest(
         self,
@@ -614,6 +725,28 @@ class JobSearchExecutor:
             updated_at=now,
         )
         self._db.add(row)
+
+        # Score at creation-time, but only if an Intent already exists to
+        # score against — an unset Intent must never silently default to
+        # "no preference = full match". Without an Intent the opportunity is
+        # simply left unscored, same as before this wiring, to be scored
+        # later via an explicit `opportunities.score` command or the next
+        # `intent.set` rescore pass.
+        if self._scorer is not None:
+            intent_row = self._db.get(IntentProjectionDB, INTENT_SINGLETON_ID)
+            if intent_row is not None:
+                scored = await self._scorer.score(row.id, "default")
+                if not 0 <= scored.score <= 100:
+                    raise ValueError("score must be between 0 and 100")
+                if len(scored.explanation) > 1000:
+                    raise ValueError(
+                        "score explanation exceeds contract maximum"
+                    )
+                row.score = scored.score
+                row.score_explanation = scored.explanation
+                row.risk_flags = list(scored.risk_flags)
+                row.state = "qualified" if scored.score >= 80 else "watching"
+
         return HandlerResult(
             result={"opportunity_id": row.id, "status": row.state},
             entity_type="opportunity",
@@ -664,6 +797,17 @@ class JobSearchExecutor:
             attributes={"state": row.state, "score_bucket": bucket},
             projections=(row,),
         )
+
+    async def _applications_create(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        # STUB — Lane F2 (CCC Wave 2, applications/outreach lifecycle) owns
+        # the real implementation of this command (BE-6). This refuses
+        # cleanly (no partial writes) purely to satisfy the executor's
+        # command-name-catalog invariant on branches that have already
+        # picked up ravenhelm-contracts 0.5.0 ahead of F2 landing.
+        raise DomainRefusal("not_implemented_pending_lane_f2")
 
     async def _applications_transition(
         self,
@@ -906,6 +1050,16 @@ class JobSearchExecutor:
             },
             projections=(row,),
         )
+
+    async def _outreach_cancel(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        # STUB — Lane F2 (CCC Wave 2, applications/outreach lifecycle) owns
+        # the real implementation of this command (BE-7, the outreach
+        # dead-end fix). See `_applications_create` above for why this
+        # refusing stub exists at all.
+        raise DomainRefusal("not_implemented_pending_lane_f2")
 
     async def _evidence_export(
         self,

@@ -13,6 +13,7 @@ from ravenhelm_contracts import JobSearchCommandV1
 
 from .database import Database
 from .jobsearch_executors import JobSearchExecutor, RetryableCommandError
+from .jobsearch_scoring import DeterministicIntentScorer
 from .jobsearch_nats import (
     COMMAND_SUBJECT_PREFIX,
     STREAM_NAME,
@@ -133,9 +134,12 @@ class JobSearchPullConsumer:
 async def run_jobsearch_worker() -> None:
     """Run the safe worker.
 
-    Adapter ports are unbound by default. WP5 (ADR-014, PRD F4) binds exactly
-    one: the Dex-delta source adapter, and only when REDIS_URL provides the
-    sweep stash it proves claims from. Every other port stays unbound.
+    Adapter ports are unbound by default except where a wave has explicitly
+    bound one. WP5 (ADR-014, PRD F4) binds the Dex-delta source adapter, and
+    only when REDIS_URL provides the sweep stash it proves claims from. CCC
+    Wave 2 Lane F1 binds the deterministic rule-based scorer v1
+    unconditionally (it is pure/local, no external I/O, so it needs no
+    availability gate). Every other port stays unbound.
     """
     from .jobsearch_sources import DexDeltaSourceAdapter, RedisSweepStash
 
@@ -162,6 +166,7 @@ async def run_jobsearch_worker() -> None:
                 if sweep_stash is not None
                 else None
             ),
+            scorer=DeterministicIntentScorer(session),
         )
         worker = JobSearchWorker(executor, publisher)
         outbox = JobSearchOutboxDispatcher(session, publisher)

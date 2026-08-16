@@ -23,10 +23,13 @@ from .models import (
 from .database import Database, close_database, init_database, get_db
 from .jobsearch_migrations import alembic_config, run_jobsearch_migrations
 from .jobsearch_models import (
+    INTENT_SINGLETON_ID,
     JOBSEARCH_COMMAND_TABLES,
     JOBSEARCH_PROJECTION_TABLES,
     JOBSEARCH_PROJECTION_TYPES,
+    WORKSPACE_SINGLETON_ID,
     ApplicationProjectionDB,
+    IntentProjectionDB,
     OpportunityProjectionDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
@@ -77,6 +80,7 @@ from .jobsearch_executors import (
     RelationshipSyncResult,
     RetryableCommandError,
 )
+from .jobsearch_scoring import DeterministicIntentScorer
 from .jobsearch_worker import (
     JobSearchPullConsumer,
     JobSearchWorker,
@@ -114,10 +118,13 @@ __all__ = [
     "JOBSEARCH_PROJECTION_TABLES",
     "JOBSEARCH_COMMAND_TABLES",
     "JOBSEARCH_PROJECTION_TYPES",
+    "INTENT_SINGLETON_ID",
+    "WORKSPACE_SINGLETON_ID",
     "OpportunityProjectionDB",
     "ApplicationProjectionDB",
     "RelationshipProjectionDB",
     "OutreachProjectionDB",
+    "IntentProjectionDB",
     "ProjectionCheckpointDB",
     "JobSearchCommandDB",
     "JobSearchEvidenceReferenceDB",
@@ -146,6 +153,7 @@ __all__ = [
     "OpportunityScoreResult",
     "RelationshipSyncResult",
     "RetryableCommandError",
+    "DeterministicIntentScorer",
     "JobSearchWorker",
     "JobSearchPullConsumer",
     "run_jobsearch_worker",

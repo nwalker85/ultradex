@@ -23,6 +23,8 @@ from .delegation_service import DelegationService
 from .event_producer import EventProducer
 from .idempotency_service import IdempotencyService
 from .jobsearch_models import (
+    INTENT_SINGLETON_ID,
+    WORKSPACE_SINGLETON_ID,
     JobSearchCommandDB,
     JobSearchExecutionReceiptDB,
     JobSearchLifecycleEventDB,
@@ -109,12 +111,15 @@ def _handle(
 
 def _entity_for(command: JobSearchCommandV1) -> tuple[str, str]:
     bindings = {
+        "workspace.initialize": ("workspace", WORKSPACE_SINGLETON_ID),
+        "intent.set": ("intent", INTENT_SINGLETON_ID),
         "sources.ingest": ("evidence", None),
         "opportunities.create": ("opportunity", None),
         "opportunities.score": (
             "opportunity",
             command.parameters.get("opportunity_id"),
         ),
+        "applications.create": ("application", None),
         "applications.transition": (
             "application",
             command.parameters.get("application_id"),
@@ -126,6 +131,10 @@ def _entity_for(command: JobSearchCommandV1) -> tuple[str, str]:
             command.parameters.get("outreach_id"),
         ),
         "outreach.send": (
+            "outreach",
+            command.parameters.get("outreach_id"),
+        ),
+        "outreach.cancel": (
             "outreach",
             command.parameters.get("outreach_id"),
         ),

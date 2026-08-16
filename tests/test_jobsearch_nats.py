@@ -101,9 +101,16 @@ def _command():
 
 
 def test_command_subject_registry_is_closed_and_bounded():
-    assert len(COMMAND_SUBJECTS) == 9
+    # ravenhelm-contracts 0.5.0 added workspace.initialize, intent.set,
+    # applications.create, and outreach.cancel to COMMAND_NAMES_V1 (CCC
+    # Wave 2, Lanes E/F1/F2) — 9 -> 13. COMMAND_SUBJECTS is derived from
+    # that shared catalog, so this bound tracks it, not a hand count.
+    assert len(COMMAND_SUBJECTS) == 13
     assert COMMAND_SUBJECTS["sources.ingest"] == (
         "ultradex.jobsearch.commands.v1.sources-ingest"
+    )
+    assert COMMAND_SUBJECTS["intent.set"] == (
+        "ultradex.jobsearch.commands.v1.intent-set"
     )
     assert COMMAND_SUBJECTS["outreach.send"].endswith(".outreach-send")
     assert lifecycle_subject("jobsearch.outreach.sent.v1") == (

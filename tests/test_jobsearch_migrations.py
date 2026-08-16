@@ -137,7 +137,7 @@ def test_relationship_schema_contains_only_canonical_contract_fields(tmp_path):
 def test_projection_types_match_canonical_frozen_set():
     assert JOBSEARCH_PROJECTION_TYPES == JOBSEARCH_PROJECTION_TYPES_V1
     assert JOBSEARCH_PROJECTION_TYPES == frozenset(
-        {"opportunities", "applications", "relationships", "outreach"}
+        {"opportunities", "applications", "relationships", "outreach", "intent"}
     )
 
 

@@ -14,9 +14,17 @@ JOBSEARCH_PROJECTION_TABLES: frozenset[str] = frozenset(
         "jobsearch_applications",
         "jobsearch_relationships",
         "jobsearch_outreach",
+        "jobsearch_intent",
         "jobsearch_projection_checkpoints",
     }
 )
+
+# Fixed identifiers for the two workspace-scoped singleton rows (CCC Wave 2,
+# Lane F1). `intent.set` and `workspace.initialize` are replace-style: they
+# always mutate the one private-workspace row rather than taking an
+# identifier, per the ravenhelm-contracts jobsearch.v1 README.
+INTENT_SINGLETON_ID: str = "intent-workspace-01"
+WORKSPACE_SINGLETON_ID: str = "workspace-private"
 
 JOBSEARCH_COMMAND_TABLES: frozenset[str] = frozenset(
     {
@@ -113,6 +121,36 @@ class OutreachProjectionDB(Base):
     message_commitment = Column(String(255), nullable=False)
     approval_contract_ref = Column(String(255), nullable=True)
     sent_evidence_ref = Column(String(255), nullable=True)
+    source_event_id = Column(String(128), nullable=False)
+    source_event_position = Column(String(128), nullable=False)
+    projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+    )
+
+
+class IntentProjectionDB(Base):
+    """The single workspace-scoped `JobSearchIntentV1` targeting record.
+
+    Replace-style singleton: exactly one row, keyed by `INTENT_SINGLETON_ID`,
+    always rewritten in place by `intent.set` rather than appended to.
+    """
+
+    __tablename__ = "jobsearch_intent"
+
+    id = Column(String(64), primary_key=True)
+    target_role_families = Column(JSON, nullable=False, default=list)
+    target_domains = Column(JSON, nullable=False, default=list)
+    seniority_band = Column(String(128), nullable=False)
+    location_preference = Column(String(255), nullable=True)
+    remote_preference = Column(String(32), nullable=False)
+    employer_exclusions = Column(JSON, nullable=False, default=list)
+    weights = Column(JSON, nullable=False)
+    narrative = Column(String(2000), nullable=True)
     source_event_id = Column(String(128), nullable=False)
     source_event_position = Column(String(128), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)

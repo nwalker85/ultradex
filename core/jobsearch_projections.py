@@ -9,6 +9,7 @@ from typing import Callable, Generic, Literal, TypeVar
 from ravenhelm_contracts import (
     ApplicationV1,
     ExecutionReceiptV1,
+    JobSearchIntentV1,
     OpportunityV1,
     OutreachV1,
     ProjectionFreshnessV1,
@@ -26,7 +27,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .jobsearch_models import (
+    INTENT_SINGLETON_ID,
     ApplicationProjectionDB,
+    IntentProjectionDB,
     JobSearchApprovalDB,
     JobSearchExecutionReceiptDB,
     OpportunityProjectionDB,
@@ -181,6 +184,12 @@ class JobSearchProjectionRepository:
         if row is None:
             return None
         return self._outreach(row, self._checkpoint("outreach"))
+
+    def get_intent(self) -> JobSearchIntentV1 | None:
+        row = self._session.get(IntentProjectionDB, INTENT_SINGLETON_ID)
+        if row is None:
+            return None
+        return self._intent(row, self._checkpoint("intent"))
 
     def get_approval(self, approval_id: str) -> ApprovalEvidence | None:
         row = self._session.scalar(
@@ -352,6 +361,7 @@ class JobSearchProjectionRepository:
             | ApplicationProjectionDB
             | RelationshipProjectionDB
             | OutreachProjectionDB
+            | IntentProjectionDB
         ),
         freshness: ProjectionFreshnessV1 | None,
     ) -> dict[str, object]:
@@ -454,6 +464,28 @@ class JobSearchProjectionRepository:
             freshness=ProjectionFreshnessV1.from_dict(
                 self._required_freshness(row, freshness)
             ),
+        )
+
+    def _intent(
+        self,
+        row: IntentProjectionDB,
+        freshness: ProjectionFreshnessV1 | None,
+    ) -> JobSearchIntentV1:
+        return JobSearchIntentV1.from_dict(
+            {
+                "intent_id": row.id,
+                "target_role_families": list(row.target_role_families or []),
+                "target_domains": list(row.target_domains or []),
+                "seniority_band": row.seniority_band,
+                "location_preference": row.location_preference,
+                "remote_preference": row.remote_preference,
+                "employer_exclusions": list(row.employer_exclusions or []),
+                "weights": dict(row.weights or {}),
+                "narrative": row.narrative,
+                "freshness": self._required_freshness(row, freshness),
+                "created_at": _timestamp(row.created_at),
+                "updated_at": _timestamp(row.updated_at),
+            }
         )
 
     @staticmethod
