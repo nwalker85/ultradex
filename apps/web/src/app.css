@@ -16,10 +16,29 @@
   padding: var(--rh-space-24);
 }
 
-/* The top bar sits above the scroll container rather than overlapping it, so
-   this only needs a breathing gutter, not clearance for the bar's height. */
-.ccc-shell section[id] {
-  scroll-margin-top: var(--rh-space-16);
+/* Shared route header — every routed page (real or stub) opens with one of
+   these so navigation and stub screens read consistently. */
+.ccc-page-header {
+  display: grid;
+  gap: var(--rh-space-4);
+}
+
+.ccc-page-header__title {
+  font-family: var(--rh-display);
+  font-size: 1.5rem;
+  font-weight: var(--rh-typography-weight-semibold);
+  margin: 0;
+}
+
+.ccc-page-header__title code {
+  font-family: var(--rh-mono);
+  font-size: 1rem;
+  font-weight: var(--rh-typography-weight-semibold);
+}
+
+.ccc-page-header__meta {
+  color: var(--rh-muted);
+  margin: 0;
 }
 
 .ccc-grid {

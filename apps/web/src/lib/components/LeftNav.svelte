@@ -1,23 +1,19 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { page } from "$app/state";
 
-  const firstHash = "#whats-next";
-
-  function resolveHash(): string {
-    if (typeof window === "undefined") return firstHash;
-    return window.location.hash || firstHash;
+  /**
+   * Nav items per PRD section 7 screen inventory. `/sources` has a route
+   * but deliberately no nav item (reachable only by direct navigation).
+   * Active state is derived from `$app/state`'s `page` (SvelteKit 2's
+   * non-deprecated replacement for `$app/stores`), not `hashchange`.
+   */
+  function isActive(href: string): boolean {
+    const pathname = page.url.pathname;
+    if (href === "/") {
+      return pathname === "/";
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
-
-  let activeHash = $state(firstHash);
-
-  onMount(() => {
-    activeHash = resolveHash();
-    const handleHashChange = () => {
-      activeHash = resolveHash();
-    };
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  });
 </script>
 
 <aside class="ccc-leftnav">
@@ -25,10 +21,10 @@
 
   <nav class="ccc-leftnav__list" aria-label="Primary">
     <a
-      href="#whats-next"
+      href="/"
       class="ccc-leftnav__item"
-      class:ccc-leftnav__item--active={activeHash === "#whats-next"}
-      aria-current={activeHash === "#whats-next" ? "page" : undefined}
+      class:ccc-leftnav__item--active={isActive("/")}
+      aria-current={isActive("/") ? "page" : undefined}
     >
       <svg
         class="ccc-leftnav__icon"
@@ -49,10 +45,10 @@
     </a>
 
     <a
-      href="#opportunities"
+      href="/opportunities"
       class="ccc-leftnav__item"
-      class:ccc-leftnav__item--active={activeHash === "#opportunities"}
-      aria-current={activeHash === "#opportunities" ? "page" : undefined}
+      class:ccc-leftnav__item--active={isActive("/opportunities")}
+      aria-current={isActive("/opportunities") ? "page" : undefined}
     >
       <svg
         class="ccc-leftnav__icon"
@@ -74,10 +70,36 @@
     </a>
 
     <a
-      href="#relationships"
+      href="/applications"
       class="ccc-leftnav__item"
-      class:ccc-leftnav__item--active={activeHash === "#relationships"}
-      aria-current={activeHash === "#relationships" ? "page" : undefined}
+      class:ccc-leftnav__item--active={isActive("/applications")}
+      aria-current={isActive("/applications") ? "page" : undefined}
+    >
+      <svg
+        class="ccc-leftnav__icon"
+        viewBox="0 0 20 20"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="5" y="3" width="10" height="14" rx="1.5" />
+        <path d="M7.5 7.5h5" />
+        <path d="M7.5 10.5h5" />
+        <path d="M7.5 13.5h3" />
+      </svg>
+      <span>Applications</span>
+    </a>
+
+    <a
+      href="/relationships"
+      class="ccc-leftnav__item"
+      class:ccc-leftnav__item--active={isActive("/relationships")}
+      aria-current={isActive("/relationships") ? "page" : undefined}
     >
       <svg
         class="ccc-leftnav__icon"
@@ -100,10 +122,10 @@
     </a>
 
     <a
-      href="#connection"
+      href="/outreach"
       class="ccc-leftnav__item"
-      class:ccc-leftnav__item--active={activeHash === "#connection"}
-      aria-current={activeHash === "#connection" ? "page" : undefined}
+      class:ccc-leftnav__item--active={isActive("/outreach")}
+      aria-current={isActive("/outreach") ? "page" : undefined}
     >
       <svg
         class="ccc-leftnav__icon"
@@ -117,11 +139,32 @@
         stroke-linejoin="round"
         aria-hidden="true"
       >
-        <path d="M8 12 12 8" />
-        <path d="M7 5.5 9.5 3a3 3 0 0 1 4.5 4l-1 1" />
-        <path d="M13 14.5 10.5 17a3 3 0 0 1-4.5-4l1-1" />
+        <path d="M3 10 17 3 12 17 9.5 11.5 3 10Z" />
       </svg>
-      <span>Connection</span>
+      <span>Outreach</span>
+    </a>
+
+    <a
+      href="/operations"
+      class="ccc-leftnav__item"
+      class:ccc-leftnav__item--active={isActive("/operations")}
+      aria-current={isActive("/operations") ? "page" : undefined}
+    >
+      <svg
+        class="ccc-leftnav__icon"
+        viewBox="0 0 20 20"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3 10h3l1.5-4L11 15l1.5-9L14 10h3" />
+      </svg>
+      <span>Operations</span>
     </a>
   </nav>
 
