@@ -109,12 +109,14 @@ def _handle(
 
 def _entity_for(command: JobSearchCommandV1) -> tuple[str, str]:
     bindings = {
+        "workspace.initialize": ("workspace", "workspace-private"),
         "sources.ingest": ("evidence", None),
         "opportunities.create": ("opportunity", None),
         "opportunities.score": (
             "opportunity",
             command.parameters.get("opportunity_id"),
         ),
+        "applications.create": ("application", None),
         "applications.transition": (
             "application",
             command.parameters.get("application_id"),
@@ -126,6 +128,10 @@ def _entity_for(command: JobSearchCommandV1) -> tuple[str, str]:
             command.parameters.get("outreach_id"),
         ),
         "outreach.send": (
+            "outreach",
+            command.parameters.get("outreach_id"),
+        ),
+        "outreach.cancel": (
             "outreach",
             command.parameters.get("outreach_id"),
         ),

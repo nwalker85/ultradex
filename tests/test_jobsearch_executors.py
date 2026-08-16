@@ -204,6 +204,31 @@ def _application(db):
     return row
 
 
+async def _prepared_outreach(
+    db,
+    publisher,
+    issuer,
+    executor,
+    *,
+    idempotency_key,
+):
+    prepared = await executor.execute(
+        await _accepted(
+            db,
+            publisher,
+            issuer,
+            "outreach.prepare",
+            {
+                "opportunity_id": "opportunity-01",
+                "channel": "gmail",
+                "message_commitment": COMMITMENT,
+            },
+            idempotency_key,
+        )
+    )
+    return prepared.result["outreach_id"]
+
+
 def test_executor_registry_exactly_matches_shared_command_catalog(
     db_session,
     receipt_issuer,
@@ -640,3 +665,294 @@ async def test_retryable_failure_has_no_terminal_receipt_until_budget_exhausted(
         .order_by(OperationEventDB.id)
     ]
     assert retry_events.count("task.retrying") == 2
+
+
+@pytest.mark.asyncio
+async def test_workspace_initialize_succeeds_without_a_projection(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+):
+    command = await _accepted(
+        db_session,
+        fake_jobsearch_publisher,
+        receipt_issuer,
+        "workspace.initialize",
+        {},
+        "workspace-init-01",
+    )
+    outcome = await JobSearchExecutor(db_session, receipt_issuer).execute(command)
+
+    assert outcome.receipt.status == "succeeded"
+    assert outcome.result == {
+        "workspace_id": "workspace-private",
+        "status": "initialized",
+    }
+
+
+@pytest.mark.asyncio
+async def test_applications_create_originates_draft_row_and_stays_transitionable(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+):
+    """BE-6: applications.create is the only way an Application row ever
+    originates. Prove the row exists at the FSM's initial `draft` state and
+    that the pre-existing applications.transition executor still operates on
+    a row born from this new command (not just on fixture-seeded rows)."""
+    _opportunity(db_session)
+    executor = JobSearchExecutor(db_session, receipt_issuer)
+
+    created = await executor.execute(
+        await _accepted(
+            db_session,
+            fake_jobsearch_publisher,
+            receipt_issuer,
+            "applications.create",
+            {
+                "opportunity_id": "opportunity-01",
+                "occurred_at": "2026-07-23T14:15:00Z",
+            },
+            "application-create-01",
+        )
+    )
+
+    application_id = created.result["application_id"]
+    row = db_session.get(ApplicationProjectionDB, application_id)
+    assert created.receipt.status == "succeeded"
+    assert created.result["status"] == "draft"
+    assert row is not None
+    assert row.state == "draft"
+    assert row.opportunity_id == "opportunity-01"
+    assert row.stage_history == [
+        {"status": "draft", "occurred_at": "2026-07-23T14:15:00Z"}
+    ]
+    assert row.source_event_id == created.event.control_surface_event.id
+
+    transitioned = await executor.execute(
+        await _accepted(
+            db_session,
+            fake_jobsearch_publisher,
+            receipt_issuer,
+            "applications.transition",
+            {
+                "application_id": application_id,
+                "status": "applied",
+                "occurred_at": "2026-07-23T14:30:00Z",
+            },
+            "application-transition-after-create",
+        )
+    )
+
+    db_session.refresh(row)
+    assert transitioned.receipt.status == "succeeded"
+    assert row.state == "applied"
+    assert row.stage_history[-1]["status"] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_applications_create_refuses_when_opportunity_is_missing(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+):
+    command = await _accepted(
+        db_session,
+        fake_jobsearch_publisher,
+        receipt_issuer,
+        "applications.create",
+        {
+            "opportunity_id": "opportunity-missing",
+            "occurred_at": "2026-07-23T14:15:00Z",
+        },
+        "application-create-missing-opportunity",
+    )
+    outcome = await JobSearchExecutor(db_session, receipt_issuer).execute(command)
+
+    assert outcome.receipt.status == "refused"
+    assert outcome.result["reason_code"] == "opportunity_not_found"
+    assert db_session.query(ApplicationProjectionDB).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_outreach_cancel_from_pending_approval_reaches_terminal_cancelled(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+):
+    _opportunity(db_session)
+    executor = JobSearchExecutor(db_session, receipt_issuer, now=lambda: NOW)
+    outreach_id = await _prepared_outreach(
+        db_session,
+        fake_jobsearch_publisher,
+        receipt_issuer,
+        executor,
+        idempotency_key="prepare-cancel-pending",
+    )
+
+    cancelled = await executor.execute(
+        await _accepted(
+            db_session,
+            fake_jobsearch_publisher,
+            receipt_issuer,
+            "outreach.cancel",
+            {
+                "outreach_id": outreach_id,
+                "reason": "Role closed by employer.",
+            },
+            "cancel-pending-01",
+        )
+    )
+
+    row = db_session.get(OutreachProjectionDB, outreach_id)
+    assert cancelled.receipt.status == "succeeded"
+    assert cancelled.result["status"] == "cancelled"
+    assert cancelled.result["reason"] == "Role closed by employer."
+    assert row.state == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_outreach_cancel_kills_the_expired_approval_dead_end(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+):
+    """BE-7: an outreach approved but never sent before its approval window
+    lapses used to be stuck in `approved` forever — outreach.send correctly
+    refuses `approval_expired`, and no other legal transition existed.
+    outreach.cancel must accept an `approved` record even after its linked
+    approval has expired, because cancellation only inspects outreach.state,
+    never approval liveness. This is the documented outreach dead end."""
+    _opportunity(db_session)
+    executor = JobSearchExecutor(db_session, receipt_issuer, now=lambda: NOW)
+    outreach_id = await _prepared_outreach(
+        db_session,
+        fake_jobsearch_publisher,
+        receipt_issuer,
+        executor,
+        idempotency_key="prepare-cancel-expired",
+    )
+    approved = await executor.execute(
+        await _accepted(
+            db_session,
+            fake_jobsearch_publisher,
+            receipt_issuer,
+            "outreach.approve",
+            {"outreach_id": outreach_id, "message_commitment": COMMITMENT},
+            "approve-cancel-expired",
+        )
+    )
+    approval_id = approved.result["approval_contract_id"]
+    approval = db_session.get(JobSearchApprovalDB, approval_id)
+    approval.expires_at = NOW - timedelta(hours=1)
+    db_session.commit()
+
+    send_attempt = await executor.execute(
+        await _accepted(
+            db_session,
+            fake_jobsearch_publisher,
+            receipt_issuer,
+            "outreach.send",
+            {
+                "outreach_id": outreach_id,
+                "approval_contract_id": approval_id,
+                "message_commitment": COMMITMENT,
+                "channel": "gmail",
+            },
+            "send-blocked-by-expiry",
+        )
+    )
+    assert send_attempt.result["reason_code"] == "approval_expired"
+
+    cancelled = await executor.execute(
+        await _accepted(
+            db_session,
+            fake_jobsearch_publisher,
+            receipt_issuer,
+            "outreach.cancel",
+            {
+                "outreach_id": outreach_id,
+                "reason": "Approval window lapsed; withdrawing outreach.",
+            },
+            "cancel-expired-01",
+        )
+    )
+
+    row = db_session.get(OutreachProjectionDB, outreach_id)
+    assert cancelled.receipt.status == "succeeded"
+    assert cancelled.result["status"] == "cancelled"
+    assert row.state == "cancelled"
+    assert row.approval_contract_ref == approval_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "illegal_state",
+    ["draft", "sent", "cancelled", "failed"],
+)
+async def test_outreach_cancel_refuses_from_illegal_source_states(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+    illegal_state,
+):
+    _opportunity(db_session)
+    outreach = OutreachProjectionDB(
+        id="outreach-illegal",
+        opportunity_id="opportunity-01",
+        relationship_id=None,
+        state=illegal_state,
+        channel="gmail",
+        message_commitment=COMMITMENT,
+        approval_contract_ref=None,
+        sent_evidence_ref=None,
+        source_event_id="event-seed",
+        source_event_position="JOBSEARCH:seed",
+        projected_at=NOW,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    db_session.add(outreach)
+    db_session.commit()
+    command = await _accepted(
+        db_session,
+        fake_jobsearch_publisher,
+        receipt_issuer,
+        "outreach.cancel",
+        {
+            "outreach_id": "outreach-illegal",
+            "reason": "Testing illegal transition.",
+        },
+        f"cancel-illegal-{illegal_state}",
+    )
+
+    outcome = await JobSearchExecutor(
+        db_session,
+        receipt_issuer,
+        now=lambda: NOW,
+    ).execute(command)
+
+    assert outcome.receipt.status == "refused"
+    assert outcome.result["reason_code"] == "invalid_outreach_cancel_transition"
+    row = db_session.get(OutreachProjectionDB, "outreach-illegal")
+    assert row.state == illegal_state
+
+
+@pytest.mark.asyncio
+async def test_outreach_cancel_refuses_when_outreach_is_missing(
+    db_session,
+    fake_jobsearch_publisher,
+    receipt_issuer,
+):
+    command = await _accepted(
+        db_session,
+        fake_jobsearch_publisher,
+        receipt_issuer,
+        "outreach.cancel",
+        {"outreach_id": "outreach-missing", "reason": "Never existed."},
+        "cancel-missing-01",
+    )
+    outcome = await JobSearchExecutor(db_session, receipt_issuer).execute(command)
+
+    assert outcome.receipt.status == "refused"
+    assert outcome.result["reason_code"] == "outreach_not_found"

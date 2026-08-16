@@ -16,7 +16,11 @@ from ravenhelm_contracts.accountability_v1 import (
     ExecutionReceiptV1,
     hash_execution_receipt_v1,
 )
-from ravenhelm_contracts.jobsearch_v1 import COMMAND_NAMES_V1
+from ravenhelm_contracts.jobsearch_v1 import (
+    COMMAND_NAMES_V1,
+    OUTREACH_CANCEL_ALLOWED_SOURCE_STATUSES_V1,
+    OUTREACH_CANCEL_TARGET_STATUS_V1,
+)
 from sqlalchemy.orm import Session
 
 from .event_producer import EventProducer
@@ -174,14 +178,17 @@ class JobSearchExecutor:
         self._now = now
         self._max_attempts = max_attempts
         self._handlers: dict[str, Handler] = {
+            "workspace.initialize": self._workspace_initialize,
             "sources.ingest": self._sources_ingest,
             "opportunities.create": self._opportunities_create,
             "opportunities.score": self._opportunities_score,
+            "applications.create": self._applications_create,
             "applications.transition": self._applications_transition,
             "relationships.sync": self._relationships_sync,
             "outreach.prepare": self._outreach_prepare,
             "outreach.approve": self._outreach_approve,
             "outreach.send": self._outreach_send,
+            "outreach.cancel": self._outreach_cancel,
             "evidence.export": self._evidence_export,
         }
         if frozenset(self._handlers) != COMMAND_NAMES_V1:
@@ -526,6 +533,20 @@ class JobSearchExecutor:
             checkpoint.lag_ms = 0
             checkpoint.status = "fresh"
 
+    async def _workspace_initialize(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        # Single-tenant bootstrap: no projection row, no external I/O — just
+        # a receipted acknowledgement that the private workspace is live.
+        workspace_id = "workspace-private"
+        return HandlerResult(
+            result={"workspace_id": workspace_id, "status": "initialized"},
+            entity_type="workspace",
+            entity_ref=workspace_id,
+            attributes={},
+        )
+
     async def _sources_ingest(
         self,
         command: JobSearchCommandV1,
@@ -662,6 +683,38 @@ class JobSearchExecutor:
             entity_type="opportunity",
             entity_ref=row.id,
             attributes={"state": row.state, "score_bucket": bucket},
+            projections=(row,),
+        )
+
+    async def _applications_create(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        opportunity_id = str(command.parameters["opportunity_id"])
+        if self._db.get(OpportunityProjectionDB, opportunity_id) is None:
+            raise DomainRefusal("opportunity_not_found")
+        occurred_at = str(command.parameters["occurred_at"])
+        now = self._now()
+        row = ApplicationProjectionDB(
+            id=f"application-{uuid.uuid4()}",
+            opportunity_id=opportunity_id,
+            state="draft",
+            stage_history=[{"status": "draft", "occurred_at": occurred_at}],
+            artifact_refs=[],
+            next_action=None,
+            next_action_deadline=None,
+            source_event_id="pending",
+            source_event_position="pending",
+            projected_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(row)
+        return HandlerResult(
+            result={"application_id": row.id, "status": row.state},
+            entity_type="application",
+            entity_ref=row.id,
+            attributes={"state": row.state},
             projections=(row,),
         )
 
@@ -904,6 +957,30 @@ class JobSearchExecutor:
                 "commitment": row.message_commitment,
                 "evidence_ref": evidence_ref,
             },
+            projections=(row,),
+        )
+
+    async def _outreach_cancel(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        outreach_id = str(command.parameters["outreach_id"])
+        row = self._locked_row(OutreachProjectionDB, outreach_id)
+        if row is None:
+            raise DomainRefusal("outreach_not_found")
+        if row.state not in OUTREACH_CANCEL_ALLOWED_SOURCE_STATUSES_V1:
+            raise DomainRefusal("invalid_outreach_cancel_transition")
+        reason = str(command.parameters["reason"])
+        row.state = OUTREACH_CANCEL_TARGET_STATUS_V1
+        return HandlerResult(
+            result={
+                "outreach_id": row.id,
+                "status": row.state,
+                "reason": reason,
+            },
+            entity_type="outreach",
+            entity_ref=row.id,
+            attributes={"state": row.state},
             projections=(row,),
         )
 

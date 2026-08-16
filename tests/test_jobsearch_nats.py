@@ -101,7 +101,10 @@ def _command():
 
 
 def test_command_subject_registry_is_closed_and_bounded():
-    assert len(COMMAND_SUBJECTS) == 9
+    # Tracks ravenhelm-contracts COMMAND_NAMES_V1 (jobsearch.v1): 9 original
+    # + workspace.initialize + intent.set + applications.create +
+    # outreach.cancel added at contracts 0.5.0.
+    assert len(COMMAND_SUBJECTS) == 13
     assert COMMAND_SUBJECTS["sources.ingest"] == (
         "ultradex.jobsearch.commands.v1.sources-ingest"
     )
