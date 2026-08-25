@@ -22,7 +22,8 @@ ClickHouse has **no credential default** — ``MAIL_CLICKHOUSE_USER`` and
 ``MAIL_CLICKHOUSE_PASSWORD`` are required, because the ``default`` user on vakr
 reaches every database on the host. Naming the user is an operator decision.
 Optional: ``MAIL_CLICKHOUSE_URL`` (default ``http://vakr.ravenmask.net:8123``),
-``MAIL_CLICKHOUSE_DATABASE`` (default ``mail``), ``MAIL_CLICKHOUSE_TIMEOUT``.
+``MAIL_CLICKHOUSE_DATABASE`` (default ``gmailnwalker85`` — one database per
+mail account), ``MAIL_CLICKHOUSE_TIMEOUT``.
 """
 from __future__ import annotations
 
@@ -34,6 +35,7 @@ import httpx
 
 from core.jobsearch_gmail import GmailAuthError, resolve_access_token
 from core.mail_clickhouse import (
+    DEFAULT_DATABASE,
     ClickHouseConfig,
     ClickHouseError,
     MailClickHouseClient,
@@ -102,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.print_ddl:
-        database = os.getenv("MAIL_CLICKHOUSE_DATABASE", "mail")
+        database = os.getenv("MAIL_CLICKHOUSE_DATABASE") or DEFAULT_DATABASE
         for statement in schema_statements(database):
             print(statement.rstrip() + ";\n")
         return 0

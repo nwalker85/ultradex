@@ -9,6 +9,7 @@ import pytest
 from core.mail_clickhouse import (
     CHUNKS_TABLE,
     DEFAULT_CLICKHOUSE_URL,
+    DEFAULT_DATABASE,
     MESSAGES_TABLE,
     ClickHouseConfig,
     ClickHouseError,
@@ -113,7 +114,11 @@ class TestConfig:
             {"MAIL_CLICKHOUSE_USER": "mail_ingest", "MAIL_CLICKHOUSE_PASSWORD": "x"}
         )
         assert config.url == DEFAULT_CLICKHOUSE_URL
-        assert config.database == "mail"
+        # Pinned deliberately: one database per mail account, named
+        # <provider><account>. Other addresses and providers get their own.
+        assert config.database == "gmailnwalker85"
+        # No hyphen, so no statement anywhere needs backtick quoting.
+        assert "-" not in config.database
 
     def test_everything_is_overridable_from_env(self):
         config = ClickHouseConfig.from_env(
@@ -145,12 +150,13 @@ class TestConfig:
 
 class TestSchema:
     def test_three_tables_plus_database_and_template_alter(self):
-        statements = schema_statements("mail")
+        db = DEFAULT_DATABASE
+        statements = schema_statements(db)
         joined = "\n".join(statements)
-        assert "CREATE DATABASE IF NOT EXISTS mail" in joined
-        assert "mail.messages" in joined
-        assert "mail.chunks" in joined
-        assert "mail.embeddings" in joined
+        assert f"CREATE DATABASE IF NOT EXISTS {db}" in joined
+        assert f"{db}.messages" in joined
+        assert f"{db}.chunks" in joined
+        assert f"{db}.embeddings" in joined
         assert "ADD COLUMN IF NOT EXISTS template_id" in joined
 
     def test_replacing_merge_tree_on_every_table(self):
@@ -225,7 +231,7 @@ class TestClient:
         written = client.insert_rows(MESSAGES_TABLE, [message_row(_message())])
         assert written == 1
         call = http.calls[0]
-        assert call["params"]["query"] == "INSERT INTO mail.messages FORMAT JSONEachRow"
+        assert call["params"]["query"] == f"INSERT INTO {DEFAULT_DATABASE}.messages FORMAT JSONEachRow"
         assert call["params"]["date_time_input_format"] == "best_effort"
         assert json.loads(call["body"])["message_id"] == "msg-1"
 
@@ -238,7 +244,7 @@ class TestClient:
     def test_bad_table_name_is_refused(self):
         client = MailClickHouseClient(config=_config(), client=FakeHttpClient())
         with pytest.raises(MailClickHouseConfigError):
-            client.insert_rows("messages; DROP TABLE mail.messages", [{"a": 1}])
+            client.insert_rows("messages; DROP TABLE other.messages", [{"a": 1}])
 
     def test_http_error_is_surfaced(self):
         http = FakeHttpClient([FakeResponse(status_code=516, text="AUTHENTICATION_FAILED")])
@@ -251,7 +257,7 @@ class TestClient:
         http = FakeHttpClient()
         client = MailClickHouseClient(config=_config(), client=http)
         applied = client.apply_schema()
-        assert len(applied) == len(schema_statements("mail"))
+        assert len(applied) == len(schema_statements(DEFAULT_DATABASE))
         assert len(http.calls) == len(applied)
 
     def test_apply_schema_is_idempotent_by_construction(self):
@@ -293,8 +299,8 @@ class TestWriter:
         assert result.messages_written == 1
         assert result.chunks_written == len(chunks)
         assert http.queries == [
-            f"INSERT INTO mail.{MESSAGES_TABLE} FORMAT JSONEachRow",
-            f"INSERT INTO mail.{CHUNKS_TABLE} FORMAT JSONEachRow",
+            f"INSERT INTO {DEFAULT_DATABASE}.{MESSAGES_TABLE} FORMAT JSONEachRow",
+            f"INSERT INTO {DEFAULT_DATABASE}.{CHUNKS_TABLE} FORMAT JSONEachRow",
         ]
 
     def test_rewriting_the_same_message_produces_identical_dedup_keys(self):

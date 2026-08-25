@@ -9,10 +9,15 @@ GMAIL_CLIENT_ID=op://ravenmask/Gmail OAuth - CCC Sense/client_id
 GMAIL_CLIENT_SECRET=op://ravenmask/Gmail OAuth - CCC Sense/client_secret
 GMAIL_REFRESH_TOKEN=op://ravenmask/Gmail OAuth - CCC Sense/refresh_token
 
-# ClickHouse endpoint. Credentials are deliberately absent from this template:
-# MAIL_CLICKHOUSE_USER must be exported by the operator, because the `default`
-# user on vakr reaches every database on the host (including `forensics`).
-# Once a scoped user exists, add its own op:// reference here.
+# ClickHouse. `gmailnwalker85` is scoped to exactly this one mail account and
+# this one database — it cannot read `forensics` or `heimdall`. One database
+# and one user per account; other addresses and providers get their own.
 MAIL_CLICKHOUSE_URL=http://vakr.ravenmask.net:8123
-MAIL_CLICKHOUSE_DATABASE=mail
-MAIL_CLICKHOUSE_PASSWORD=op://ravenmask/Heimdall ClickStack - Vakr/CLICKHOUSE_PASSWORD
+MAIL_CLICKHOUSE_DATABASE=gmailnwalker85
+MAIL_CLICKHOUSE_USER=gmailnwalker85
+MAIL_CLICKHOUSE_PASSWORD=op://ravenmask/ClickHouse gmailnwalker85 - Vakr/password
+
+# Embeddings: odin llama-swap, OpenAI-compatible /v1/embeddings. Internal DNS,
+# not the tailnet IP. Same model and window discipline as audio-app.
+EMBED_API_URL=http://odin.ravenmask.net:18090
+EMBED_MODEL=nomic-embed-text

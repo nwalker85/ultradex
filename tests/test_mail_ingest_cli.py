@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from cli.ingest_mail_corpus import build_parser, main
+from core.mail_clickhouse import DEFAULT_DATABASE
 
 _CLICKHOUSE_ENV = (
     "MAIL_CLICKHOUSE_URL",
@@ -39,7 +40,7 @@ class TestPrintDdl:
     def test_prints_the_schema_without_touching_a_server(self, capsys):
         assert main(["--print-ddl"]) == 0
         out = capsys.readouterr().out
-        assert "CREATE DATABASE IF NOT EXISTS mail" in out
+        assert f"CREATE DATABASE IF NOT EXISTS {DEFAULT_DATABASE}" in out
         assert "ReplacingMergeTree(ingested_at)" in out
         assert out.count("CREATE TABLE IF NOT EXISTS") == 3
 

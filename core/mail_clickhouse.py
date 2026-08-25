@@ -21,7 +21,11 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
 
 DEFAULT_CLICKHOUSE_URL = "http://vakr.ravenmask.net:8123"
-DEFAULT_DATABASE = "mail"
+#: One database per mail account, named ``<provider><account>`` — there will be
+#: other addresses and other providers, and they do not share a corpus. Kept to
+#: ``[A-Za-z0-9_]`` on purpose: a hyphen would be legal but would force every
+#: hand-written query through backticks forever.
+DEFAULT_DATABASE = "gmailnwalker85"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 
 MESSAGES_TABLE = "messages"
