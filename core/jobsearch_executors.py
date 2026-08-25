@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
 from typing import Awaitable, Callable, Protocol
 import uuid
 
@@ -16,19 +18,30 @@ from ravenhelm_contracts.accountability_v1 import (
     ExecutionReceiptV1,
     hash_execution_receipt_v1,
 )
-from ravenhelm_contracts.jobsearch_v1 import COMMAND_NAMES_V1
+from ravenhelm_contracts.jobsearch_v1 import (
+    APPLICATION_STATUSES_V1,
+    COMMAND_NAMES_V1,
+    OUTREACH_CANCEL_ALLOWED_SOURCE_STATUSES_V1,
+    OUTREACH_CANCEL_TARGET_STATUS_V1,
+    SOURCE_KINDS_V1,
+)
 from sqlalchemy.orm import Session
 
 from .event_producer import EventProducer
-from .jobsearch_commands import build_jobsearch_event
+from .jobsearch_commands import COMMAND_NAMES_CRM, build_jobsearch_event
 from .jobsearch_models import (
+    INTENT_SINGLETON_ID,
+    WORKSPACE_SINGLETON_ID,
     ApplicationProjectionDB,
+    IntentProjectionDB,
     JobSearchApprovalDB,
     JobSearchCommandDB,
     JobSearchEvidenceReferenceDB,
     JobSearchExecutionReceiptDB,
     JobSearchLifecycleEventDB,
+    LeadDB,
     OpportunityProjectionDB,
+    OrganizationDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
     RelationshipProjectionDB,
@@ -174,17 +187,25 @@ class JobSearchExecutor:
         self._now = now
         self._max_attempts = max_attempts
         self._handlers: dict[str, Handler] = {
+            "workspace.initialize": self._workspace_initialize,
+            "intent.set": self._intent_set,
             "sources.ingest": self._sources_ingest,
             "opportunities.create": self._opportunities_create,
             "opportunities.score": self._opportunities_score,
+            "applications.create": self._applications_create,
             "applications.transition": self._applications_transition,
             "relationships.sync": self._relationships_sync,
             "outreach.prepare": self._outreach_prepare,
             "outreach.approve": self._outreach_approve,
             "outreach.send": self._outreach_send,
+            "outreach.cancel": self._outreach_cancel,
             "evidence.export": self._evidence_export,
+            "leads.create": self._leads_create,
+            "leads.convert": self._leads_convert,
+            "organizations.create": self._organizations_create,
+            "organizations.update": self._organizations_update,
         }
-        if frozenset(self._handlers) != COMMAND_NAMES_V1:
+        if frozenset(self._handlers) != COMMAND_NAMES_CRM:
             raise RuntimeError("executor registry does not match shared command catalog")
 
     @property
@@ -497,6 +518,9 @@ class JobSearchExecutor:
             ApplicationProjectionDB: "applications",
             RelationshipProjectionDB: "relationships",
             OutreachProjectionDB: "outreach",
+            IntentProjectionDB: "intent",
+            OrganizationDB: "organizations",
+            LeadDB: "leads",
         }
         projection_type = mapping.get(type(projection))
         if projection_type is None:
@@ -526,6 +550,102 @@ class JobSearchExecutor:
             checkpoint.lag_ms = 0
             checkpoint.status = "fresh"
 
+    async def _workspace_initialize(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        # Zero-parameter, idempotent: it always resolves to the same private
+        # workspace identity. No projection table exists for "workspace" in
+        # JOBSEARCH_PROJECTION_TYPES_V1, so there is nothing to stamp; this
+        # command only ever produces its lifecycle event and receipt.
+        return HandlerResult(
+            result={
+                "workspace_id": WORKSPACE_SINGLETON_ID,
+                "status": "initialized",
+            },
+            entity_type="workspace",
+            entity_ref=WORKSPACE_SINGLETON_ID,
+            # JobSearchEventAttributesV1 is closed (additionalProperties:
+            # false) over a fixed key set that has no "workspace status"
+            # concept — the op result above already carries that. Only
+            # `result` (auto-injected by _finalize) belongs here.
+            attributes={},
+        )
+
+    async def _intent_set(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        params = command.parameters
+        now = self._now()
+        row = self._locked_row(IntentProjectionDB, INTENT_SINGLETON_ID)
+        is_new = row is None
+        if row is None:
+            row = IntentProjectionDB(
+                id=INTENT_SINGLETON_ID,
+                source_event_id="pending",
+                source_event_position="pending",
+                projected_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        row.target_role_families = list(params["target_role_families"])
+        row.target_domains = list(params["target_domains"])
+        row.seniority_band = str(params["seniority_band"])
+        row.location_preference = params.get("location_preference")
+        row.remote_preference = str(params["remote_preference"])
+        row.employer_exclusions = list(params["employer_exclusions"])
+        row.weights = dict(params["weights"])
+        row.narrative = params.get("narrative")
+        if is_new:
+            self._db.add(row)
+
+        # Replace-style singleton write: rescore every existing opportunity
+        # against the new targeting record in the same atomic operation, so
+        # the projection never shows opportunities scored against a stale
+        # Intent. Best-effort: if no scorer is bound, the Intent still sets
+        # successfully and opportunities keep whatever score they had.
+        projections: list[object] = [row]
+        rescored_count = 0
+        if self._scorer is not None:
+            opportunities = (
+                self._db.query(OpportunityProjectionDB)
+                .order_by(OpportunityProjectionDB.id.asc())
+                .all()
+            )
+            for opportunity in opportunities:
+                scored = await self._scorer.score(
+                    opportunity.id,
+                    "default",
+                )
+                if not 0 <= scored.score <= 100:
+                    raise ValueError("score must be between 0 and 100")
+                if len(scored.explanation) > 1000:
+                    raise ValueError(
+                        "score explanation exceeds contract maximum"
+                    )
+                opportunity.score = scored.score
+                opportunity.score_explanation = scored.explanation
+                opportunity.risk_flags = list(scored.risk_flags)
+                opportunity.state = (
+                    "qualified" if scored.score >= 80 else "watching"
+                )
+                projections.append(opportunity)
+                rescored_count += 1
+
+        return HandlerResult(
+            result={
+                "intent_id": row.id,
+                "rescored_count": rescored_count,
+            },
+            entity_type="intent",
+            entity_ref=row.id,
+            # JobSearchEventAttributesV1 is closed over a fixed key set with
+            # no "rescored_count" concept — that lives in the op result above.
+            attributes={},
+            projections=tuple(projections),
+        )
+
     async def _sources_ingest(
         self,
         command: JobSearchCommandV1,
@@ -550,6 +670,20 @@ class JobSearchExecutor:
             or contract.observed_at != command.parameters["observed_at"]
         ):
             raise DomainRefusal("source_result_mismatch")
+        existing = self._db.get(JobSearchEvidenceReferenceDB, contract.evidence_id)
+        if existing is not None:
+            if existing.commitment != contract.commitment:
+                raise DomainRefusal("evidence_commitment_conflict")
+            return HandlerResult(
+                result={"evidence_id": existing.evidence_id},
+                entity_type="evidence",
+                entity_ref=existing.evidence_id,
+                attributes={
+                    "connector": existing.source_kind,
+                    "evidence_ref": existing.evidence_id,
+                    "commitment": existing.commitment,
+                },
+            )
         observed = datetime.fromisoformat(
             contract.observed_at.replace("Z", "+00:00")
         )
@@ -614,6 +748,28 @@ class JobSearchExecutor:
             updated_at=now,
         )
         self._db.add(row)
+
+        # Score at creation-time, but only if an Intent already exists to
+        # score against — an unset Intent must never silently default to
+        # "no preference = full match". Without an Intent the opportunity is
+        # simply left unscored, same as before this wiring, to be scored
+        # later via an explicit `opportunities.score` command or the next
+        # `intent.set` rescore pass.
+        if self._scorer is not None:
+            intent_row = self._db.get(IntentProjectionDB, INTENT_SINGLETON_ID)
+            if intent_row is not None:
+                scored = await self._scorer.score(row.id, "default")
+                if not 0 <= scored.score <= 100:
+                    raise ValueError("score must be between 0 and 100")
+                if len(scored.explanation) > 1000:
+                    raise ValueError(
+                        "score explanation exceeds contract maximum"
+                    )
+                row.score = scored.score
+                row.score_explanation = scored.explanation
+                row.risk_flags = list(scored.risk_flags)
+                row.state = "qualified" if scored.score >= 80 else "watching"
+
         return HandlerResult(
             result={"opportunity_id": row.id, "status": row.state},
             entity_type="opportunity",
@@ -662,6 +818,38 @@ class JobSearchExecutor:
             entity_type="opportunity",
             entity_ref=row.id,
             attributes={"state": row.state, "score_bucket": bucket},
+            projections=(row,),
+        )
+
+    async def _applications_create(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        opportunity_id = str(command.parameters["opportunity_id"])
+        if self._db.get(OpportunityProjectionDB, opportunity_id) is None:
+            raise DomainRefusal("opportunity_not_found")
+        occurred_at = str(command.parameters["occurred_at"])
+        now = self._now()
+        row = ApplicationProjectionDB(
+            id=f"application-{uuid.uuid4()}",
+            opportunity_id=opportunity_id,
+            state="draft",
+            stage_history=[{"status": "draft", "occurred_at": occurred_at}],
+            artifact_refs=[],
+            next_action=None,
+            next_action_deadline=None,
+            source_event_id="pending",
+            source_event_position="pending",
+            projected_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(row)
+        return HandlerResult(
+            result={"application_id": row.id, "status": row.state},
+            entity_type="application",
+            entity_ref=row.id,
+            attributes={"state": row.state},
             projections=(row,),
         )
 
@@ -907,6 +1095,30 @@ class JobSearchExecutor:
             projections=(row,),
         )
 
+    async def _outreach_cancel(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        outreach_id = str(command.parameters["outreach_id"])
+        row = self._locked_row(OutreachProjectionDB, outreach_id)
+        if row is None:
+            raise DomainRefusal("outreach_not_found")
+        if row.state not in OUTREACH_CANCEL_ALLOWED_SOURCE_STATUSES_V1:
+            raise DomainRefusal("invalid_outreach_cancel_transition")
+        reason = str(command.parameters["reason"])
+        row.state = OUTREACH_CANCEL_TARGET_STATUS_V1
+        return HandlerResult(
+            result={
+                "outreach_id": row.id,
+                "status": row.state,
+                "reason": reason,
+            },
+            entity_type="outreach",
+            entity_ref=row.id,
+            attributes={"state": row.state},
+            projections=(row,),
+        )
+
     async def _evidence_export(
         self,
         command: JobSearchCommandV1,
@@ -934,4 +1146,319 @@ class JobSearchExecutor:
             entity_type="evidence",
             entity_ref=evidence_ref,
             attributes={"evidence_ref": evidence_ref},
+        )
+
+    async def _leads_create(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        params = command.parameters
+        employer = str(params.get("employer") or "").strip()
+        title = str(params.get("title") or "").strip()
+        if not employer or not title:
+            raise DomainRefusal("invalid_lead_parameters")
+
+        now = self._now()
+        lead_id = f"lead-{uuid.uuid4()}"
+
+        fit_score = params.get("fit_score")
+        if fit_score is not None:
+            try:
+                fit_score = float(fit_score)
+            except (TypeError, ValueError):
+                raise DomainRefusal("invalid_lead_parameters")
+            if not 0 <= fit_score <= 100:
+                raise DomainRefusal("invalid_lead_parameters")
+
+        row = LeadDB(
+            id=lead_id,
+            source_board=str(params.get("source_board", "manual")),
+            external_id=params.get("external_id"),
+            employer=employer,
+            organization_id=params.get("organization_id"),
+            title=title,
+            location=params.get("location"),
+            remote_type=str(params.get("remote_type", "unknown")),
+            salary_min=params.get("salary_min"),
+            salary_max=params.get("salary_max"),
+            salary_currency=str(params.get("salary_currency", "USD")),
+            url=params.get("url"),
+            description=params.get("description"),
+            requirements=list(params.get("requirements") or []),
+            fit_score=fit_score,
+            match_breakdown=dict(params.get("match_breakdown") or {}),
+            risk_flags=list(params.get("risk_flags") or []),
+            state="unapplied",
+            converted_opportunity_id=None,
+            source_event_id="pending",
+            source_event_position="pending",
+            projected_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(row)
+
+        fit_score_val = (
+            int(round(row.fit_score))
+            if row.fit_score is not None
+            else None
+        )
+        return HandlerResult(
+            result={
+                "lead_id": row.id,
+                "employer": row.employer,
+                "title": row.title,
+                "status": row.state,
+                "fit_score": fit_score_val,
+            },
+            entity_type="lead",
+            entity_ref=row.id,
+            attributes={
+                "state": row.state,
+            },
+            projections=(row,),
+        )
+
+    async def _leads_convert(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        params = command.parameters
+        lead_id = str(params.get("lead_id") or "").strip()
+        if not lead_id:
+            raise DomainRefusal("lead_not_found")
+        lead = self._locked_row(LeadDB, lead_id)
+        if lead is None:
+            raise DomainRefusal("lead_not_found")
+
+        # Fail-closed refusal if already converted or dismissed
+        if lead.state == "converted" or lead.converted_opportunity_id is not None:
+            raise DomainRefusal("lead_already_converted", receipt_reason="policy_denied")
+        if lead.state == "dismissed":
+            raise DomainRefusal("lead_dismissed", receipt_reason="policy_denied")
+
+        now = self._now()
+        occurred_at = str(params.get("occurred_at") or _timestamp(now))
+        stage = str(params.get("stage", "applied"))
+        if stage not in APPLICATION_STATUSES_V1:
+            raise DomainRefusal("invalid_application_stage")
+
+        opp_id = f"opportunity-{uuid.uuid4()}"
+        app_id = f"application-{uuid.uuid4()}"
+
+        # 1. Mutate Lead record
+        lead.state = "converted"
+        lead.converted_opportunity_id = opp_id
+        lead.updated_at = now
+
+        # 2. Create Opportunity Projection
+        score_val = lead.fit_score
+        score_explanation = (
+            json.dumps(lead.match_breakdown)
+            if isinstance(lead.match_breakdown, dict) and lead.match_breakdown
+            else f"Converted from Lead {lead.id}"
+        )
+        if len(score_explanation) > 1000:
+            score_explanation = score_explanation[:997] + "..."
+
+        source_kind = (
+            lead.source_board
+            if lead.source_board in SOURCE_KINDS_V1
+            else "manual"
+        )
+        evidence_dict = {
+            "evidence_id": f"evidence-lead-{lead.id}",
+            "source_kind": source_kind,
+            "source_ref": lead.url or f"lead:{lead.id}",
+            "classification": "private",
+            "observed_at": _timestamp(lead.created_at),
+            "commitment": f"sha256:{hashlib.sha256(lead.id.encode()).hexdigest()}",
+            "redacted_summary": f"Lead converted: {lead.title} at {lead.employer}"[:240],
+        }
+
+        opp_row = OpportunityProjectionDB(
+            id=opp_id,
+            employer_name=lead.employer,
+            title=str(params.get("custom_title") or lead.title),
+            location=lead.location,
+            role_family=str(params.get("target_role_family") or "engineering_leadership"),
+            state="qualified" if (score_val is not None and score_val >= 80) else "watching",
+            score=score_val,
+            score_explanation=score_explanation,
+            risk_flags=list(lead.risk_flags or []),
+            evidence_refs=[evidence_dict],
+            source_event_id="pending",
+            source_event_position="pending",
+            projected_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(opp_row)
+
+        # 3. Create Application Projection
+        next_deadline = None
+        if params.get("next_action_deadline"):
+            next_deadline = datetime.fromisoformat(
+                str(params["next_action_deadline"]).replace("Z", "+00:00")
+            )
+        app_row = ApplicationProjectionDB(
+            id=app_id,
+            opportunity_id=opp_id,
+            state=stage,
+            stage_history=[{"status": stage, "occurred_at": occurred_at}],
+            artifact_refs=[],
+            next_action=params.get("next_action"),
+            next_action_deadline=next_deadline,
+            source_event_id="pending",
+            source_event_position="pending",
+            projected_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(app_row)
+
+        # 4. Sync Relationships if contact references provided
+        created_relationships: list[RelationshipProjectionDB] = []
+        contact_refs = list(params.get("contact_refs") or [])
+        for dex_ref in contact_refs:
+            rel_id = f"relationship-{uuid.uuid4()}"
+            score = None
+            reason = "Linked during lead conversion"
+            if self._relationship_resolver is not None:
+                resolved = await self._relationship_resolver.sync(opp_id, str(dex_ref))
+                rel_id = resolved.relationship_id
+                score = resolved.relevance_score
+                reason = resolved.relevance_summary or reason
+
+            rel_row = RelationshipProjectionDB(
+                id=rel_id,
+                opportunity_id=opp_id,
+                dex_contact_ref=str(dex_ref),
+                relevance_score=score,
+                relevance_reason=reason,
+                source_event_id="pending",
+                source_event_position="pending",
+                projected_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+            self._db.add(rel_row)
+            created_relationships.append(rel_row)
+
+        projections = (lead, opp_row, app_row, *created_relationships)
+
+        return HandlerResult(
+            result={
+                "lead_id": lead.id,
+                "opportunity_id": opp_row.id,
+                "application_id": app_row.id,
+                "status": "converted",
+                "relationships_synced": len(created_relationships),
+            },
+            entity_type="lead",
+            entity_ref=lead.id,
+            attributes={
+                "state": "converted",
+                "stage": app_row.state,
+            },
+            projections=projections,
+        )
+
+    async def _organizations_create(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        params = command.parameters
+        name = str(params.get("name") or "").strip()
+        if not name:
+            raise DomainRefusal("invalid_organization_name")
+
+        now = self._now()
+        org_id = f"organization-{uuid.uuid4()}"
+
+        advocacy = params.get("advocacy_rating")
+        if advocacy is not None:
+            try:
+                advocacy = float(advocacy)
+            except (TypeError, ValueError):
+                raise DomainRefusal("invalid_organization_parameters")
+            if not 0.0 <= advocacy <= 100.0:
+                raise DomainRefusal("invalid_organization_parameters")
+
+        row = OrganizationDB(
+            id=org_id,
+            name=name,
+            domain=params.get("domain"),
+            industry=params.get("industry"),
+            size=params.get("size"),
+            advocacy_rating=advocacy,
+            notes=params.get("notes"),
+            source_event_id="pending",
+            source_event_position="pending",
+            projected_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(row)
+
+        return HandlerResult(
+            result={
+                "organization_id": row.id,
+                "name": row.name,
+                "domain": row.domain,
+                "status": "created",
+            },
+            entity_type="organization",
+            entity_ref=row.id,
+            attributes={"state": "active"},
+            projections=(row,),
+        )
+
+    async def _organizations_update(
+        self,
+        command: JobSearchCommandV1,
+    ) -> HandlerResult:
+        params = command.parameters
+        org_id = str(params.get("organization_id") or "").strip()
+        if not org_id:
+            raise DomainRefusal("organization_not_found")
+        row = self._locked_row(OrganizationDB, org_id)
+        if row is None:
+            raise DomainRefusal("organization_not_found")
+
+        if "name" in params and params["name"]:
+            row.name = str(params["name"]).strip()
+        if "domain" in params:
+            row.domain = params["domain"]
+        if "industry" in params:
+            row.industry = params["industry"]
+        if "size" in params:
+            row.size = params["size"]
+        if "advocacy_rating" in params:
+            advocacy = params["advocacy_rating"]
+            if advocacy is not None:
+                try:
+                    advocacy = float(advocacy)
+                except (TypeError, ValueError):
+                    raise DomainRefusal("invalid_organization_parameters")
+                if not 0.0 <= advocacy <= 100.0:
+                    raise DomainRefusal("invalid_organization_parameters")
+            row.advocacy_rating = advocacy
+        if "notes" in params:
+            row.notes = params["notes"]
+
+        now = self._now()
+        row.updated_at = now
+
+        return HandlerResult(
+            result={
+                "organization_id": row.id,
+                "name": row.name,
+                "domain": row.domain,
+                "status": "updated",
+            },
+            entity_type="organization",
+            entity_ref=row.id,
+            attributes={"state": "active"},
+            projections=(row,),
         )

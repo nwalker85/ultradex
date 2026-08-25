@@ -18,7 +18,7 @@
     binding lands with the real screen.
   -->
   <EmptyState
-    title="No command originates an Application yet"
-    description="applications.create does not exist in Ultradex today (PRD section 11.3, BE-6). This route is a placeholder; the stage-grouped list and governed transitions land in a later slice."
+    title="No applications yet"
+    description="applications.create exists; this screen is still a placeholder. Originate an application from an opportunity, then the stage-grouped list lands in a later slice."
   />
 </div>

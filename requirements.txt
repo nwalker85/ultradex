@@ -9,7 +9,7 @@ anthropic==0.7.8
 arq==0.25.0
 redis==5.0.1
 strawberry-graphql[fastapi]==0.323.1
-ravenhelm-contracts==0.2.0
+ravenhelm-contracts==0.7.0
 alembic==1.18.5
 cryptography>=45.0,<47
 nats-py>=2.11,<3

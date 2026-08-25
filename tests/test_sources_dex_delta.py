@@ -60,6 +60,14 @@ class TestDelta:
         assert [c["id"] for c in delta["changed"]] == ["c1"]
         assert [c["id"] for c in delta["neglected"]] == ["c2"]
 
+    def test_unknown_last_contacted_is_not_neglected(self):
+        local = [_contact("c1", "Alice", "alice@x.com")]
+        remote = [_dex_contact("c1", "Alice", "alice@x.com")]
+        delta = compute_dex_delta(remote, local, now=NOW, neglect_days=90)
+        assert delta["new"] == []
+        assert delta["changed"] == []
+        assert delta["neglected"] == []
+
     def test_no_drift_means_empty_delta(self):
         local = [_contact("c1", "Alice", "alice@x.com", last_contacted=NOW)]
         remote = [_dex_contact("c1", "Alice", "alice@x.com")]

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Badge, Button, Field, Panel, Table } from "@ravenhelm/ui-svelte";
+  import { Badge, Button, Panel, Table } from "@ravenhelm/ui-svelte";
   import type {
     Application,
     ApplicationPage,
@@ -10,7 +10,7 @@
     RelationshipPage,
   } from "@ultradex/sdk";
 
-  import { createClient, loadConfig, saveConfig, type GlassConfig } from "$lib/client";
+  import { createClient, loadConfig, operatorAuthMissing, type GlassConfig } from "$lib/client";
   import {
     buildFreshnessRollupInput,
     buildNeedsAttention,
@@ -25,34 +25,8 @@
   import FreshnessTag from "$lib/components/FreshnessTag.svelte";
   import TokenRequiredNotice from "$lib/components/TokenRequiredNotice.svelte";
 
-  // Connection panel lives here (Command home, `/`) because this is the
-  // screen every session opens on (PRD section 5, workflow 9), and it is
-  // the only place the operator token can be set — it must stay reachable
-  // regardless of the roll-up's own load state below.
   let config = $state<GlassConfig>(loadConfig());
-  let checking = $state(false);
-  let connectionError = $state<unknown>(null);
-  let lastCheckedAt = $state<string | null>(null);
-
-  async function testConnection(): Promise<void> {
-    checking = true;
-    connectionError = null;
-    try {
-      saveConfig(config);
-      if (!config.token) {
-        throw new Error("Operator token required (paste ULTRADEX_API_TOKEN).");
-      }
-      const client = createClient(config);
-      await client.getHealth();
-      lastCheckedAt = new Date().toLocaleTimeString();
-    } catch (cause) {
-      connectionError = cause;
-    } finally {
-      checking = false;
-    }
-  }
-
-  const tokenMissing = $derived(config.token.trim() === "");
+  const tokenMissing = $derived(operatorAuthMissing(config));
 
   // ---------------------------------------------------------------------
   // FR-CMD-1 — four independent, mount-time section loads (PRD §7 screen
@@ -212,7 +186,6 @@
   }
 
   onMount(() => {
-    void testConnection();
     refreshRollUp();
   });
 
@@ -273,49 +246,9 @@
   <header class="ccc-page-header">
     <h1 class="ccc-page-header__title">Command</h1>
     <p class="ccc-page-header__meta">
-      Session orientation, connection setup, and the cross-entity roll-up.
+      Session orientation and the cross-entity roll-up.
     </p>
   </header>
-
-  <Panel title="Connection" meta="local only">
-    <p class="ccc-empty">
-      Token = Ultradex API bearer (`ULTRADEX_API_TOKEN`). In 1Password:
-      <em>Ultradex Local Obsidian Operator</em> → field <strong>operator token</strong>
-      (not Dex, not the item password labeled credential unless they match).
-    </p>
-    <div class="ccc-grid ccc-grid--two" style="margin-top: 0.75rem">
-      <Field
-        label="API base URL (use this glass origin to proxy)"
-        bind:value={config.baseUrl}
-      />
-      <Field
-        label="Operator token (ULTRADEX_API_TOKEN)"
-        type="password"
-        autocomplete="off"
-        bind:value={config.token}
-      />
-    </div>
-    <div class="ccc-actions" style="margin-top: 0.75rem">
-      <Button
-        variant="primary"
-        onclick={() => {
-          void testConnection();
-          refreshRollUp();
-        }}
-        disabled={checking}
-      >
-        {checking ? "Checking…" : "Save & test connection"}
-      </Button>
-      {#if lastCheckedAt && !connectionError}
-        <span class="ccc-empty">Last OK: {lastCheckedAt}</span>
-      {/if}
-    </div>
-    {#if connectionError}
-      <div style="margin-top: 0.75rem">
-        <ErrorBanner error={connectionError} />
-      </div>
-    {/if}
-  </Panel>
 
   {#if tokenMissing}
     <TokenRequiredNotice />
@@ -435,8 +368,8 @@
         <p class="ccc-empty">Loading…</p>
       {:else if (applicationsPage?.items.length ?? 0) === 0}
         <EmptyState
-          title="No command originates an Application yet"
-          description="applications.create does not exist in Ultradex today (PRD §11.3, BE-6)."
+          title="No applications yet"
+          description="applications.create exists; this home rail is empty until one is originated."
         />
       {:else}
         <Table columns={["Application", "Stage"]} caption="Applications">

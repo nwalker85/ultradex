@@ -1,0 +1,11 @@
+.git
+**/.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.svelte-kit
+**/dist
+**/build
+*.pyc
+.DS_Store

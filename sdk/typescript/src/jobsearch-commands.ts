@@ -66,7 +66,7 @@ function validateIdempotencyKey(idempotencyKey: string): string {
 
 function commandParameters(
   command: JobSearchCommand,
-): Readonly<Record<string, string>> {
+): Readonly<Record<string, unknown>> {
   switch (command.commandName) {
     case "sources.ingest":
       return {
@@ -84,6 +84,13 @@ function commandParameters(
       return {
         opportunity_id: command.parameters.opportunityId,
         lens: command.parameters.lens,
+      };
+    case "applications.create":
+      return {
+        opportunity_id: command.parameters.opportunityId,
+        ...(command.parameters.stage ? { stage: command.parameters.stage } : {}),
+        ...(command.parameters.occurredAt ? { occurred_at: command.parameters.occurredAt } : {}),
+        ...(command.parameters.sourceEvidenceId ? { source_evidence_id: command.parameters.sourceEvidenceId } : {}),
       };
     case "applications.transition":
       return {
@@ -117,11 +124,77 @@ function commandParameters(
         message_commitment: command.parameters.messageCommitment,
         channel: command.parameters.channel,
       };
+    case "outreach.cancel":
+      return {
+        outreach_id: command.parameters.outreachId,
+        ...(command.parameters.reason ? { reason: command.parameters.reason } : {}),
+      };
     case "evidence.export":
       return {
         subject_type: command.parameters.subjectType,
         subject_id: command.parameters.subjectId,
         profile: command.parameters.profile,
+      };
+    case "leads.create":
+      return {
+        employer: command.parameters.employer,
+        title: command.parameters.title,
+        ...(command.parameters.sourceBoard ? { source_board: command.parameters.sourceBoard } : {}),
+        ...(command.parameters.externalId ? { external_id: command.parameters.externalId } : {}),
+        ...(command.parameters.organizationId ? { organization_id: command.parameters.organizationId } : {}),
+        ...(command.parameters.location ? { location: command.parameters.location } : {}),
+        ...(command.parameters.remoteType ? { remote_type: command.parameters.remoteType } : {}),
+        ...(command.parameters.salaryMin !== undefined ? { salary_min: command.parameters.salaryMin } : {}),
+        ...(command.parameters.salaryMax !== undefined ? { salary_max: command.parameters.salaryMax } : {}),
+        ...(command.parameters.salaryCurrency ? { salary_currency: command.parameters.salaryCurrency } : {}),
+        ...(command.parameters.url ? { url: command.parameters.url } : {}),
+        ...(command.parameters.description ? { description: command.parameters.description } : {}),
+        ...(command.parameters.requirements ? { requirements: command.parameters.requirements } : {}),
+        ...(command.parameters.fitScore !== undefined ? { fit_score: command.parameters.fitScore } : {}),
+        ...(command.parameters.matchBreakdown ? { match_breakdown: command.parameters.matchBreakdown } : {}),
+        ...(command.parameters.riskFlags ? { risk_flags: command.parameters.riskFlags } : {}),
+      };
+    case "leads.convert":
+      return {
+        lead_id: command.parameters.leadId,
+        ...(command.parameters.stage ? { stage: command.parameters.stage } : {}),
+        ...(command.parameters.occurredAt ? { occurred_at: command.parameters.occurredAt } : {}),
+        ...(command.parameters.customTitle ? { custom_title: command.parameters.customTitle } : {}),
+        ...(command.parameters.targetRoleFamily ? { target_role_family: command.parameters.targetRoleFamily } : {}),
+        ...(command.parameters.contactRefs ? { contact_refs: command.parameters.contactRefs } : {}),
+        ...(command.parameters.nextAction ? { next_action: command.parameters.nextAction } : {}),
+        ...(command.parameters.nextActionDeadline ? { next_action_deadline: command.parameters.nextActionDeadline } : {}),
+      };
+    case "organizations.create":
+      return {
+        name: command.parameters.name,
+        ...(command.parameters.domain ? { domain: command.parameters.domain } : {}),
+        ...(command.parameters.industry ? { industry: command.parameters.industry } : {}),
+        ...(command.parameters.size ? { size: command.parameters.size } : {}),
+        ...(command.parameters.advocacyRating !== undefined ? { advocacy_rating: command.parameters.advocacyRating } : {}),
+        ...(command.parameters.notes ? { notes: command.parameters.notes } : {}),
+      };
+    case "organizations.update":
+      return {
+        organization_id: command.parameters.organizationId,
+        ...(command.parameters.name ? { name: command.parameters.name } : {}),
+        ...(command.parameters.domain ? { domain: command.parameters.domain } : {}),
+        ...(command.parameters.industry ? { industry: command.parameters.industry } : {}),
+        ...(command.parameters.size ? { size: command.parameters.size } : {}),
+        ...(command.parameters.advocacyRating !== undefined ? { advocacy_rating: command.parameters.advocacyRating } : {}),
+        ...(command.parameters.notes ? { notes: command.parameters.notes } : {}),
+      };
+    case "workspace.initialize":
+      return {
+        ...(command.parameters.workspaceId ? { workspace_id: command.parameters.workspaceId } : {}),
+      };
+    case "intent.set":
+      return {
+        ...(command.parameters.targetRoleFamilies ? { target_role_families: command.parameters.targetRoleFamilies } : {}),
+        ...(command.parameters.targetDomains ? { target_domains: command.parameters.targetDomains } : {}),
+        ...(command.parameters.seniorityBand ? { seniority_band: command.parameters.seniorityBand } : {}),
+        ...(command.parameters.locationPreference ? { location_preference: command.parameters.locationPreference } : {}),
+        ...(command.parameters.remotePreference ? { remote_preference: command.parameters.remotePreference } : {}),
       };
   }
 }

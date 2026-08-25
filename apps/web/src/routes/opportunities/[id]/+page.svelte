@@ -4,8 +4,15 @@
   import { Badge, Panel } from "@ravenhelm/ui-svelte";
   import type { Opportunity } from "@ultradex/sdk";
 
-  import { createClient, loadConfig, saveConfig, type GlassConfig } from "$lib/client";
+  import {
+    createClient,
+    loadConfig,
+    operatorAuthMissing,
+    saveConfig,
+    type GlassConfig,
+  } from "$lib/client";
   import { findOpportunityById } from "$lib/opportunities";
+  import { isExcludedOpportunity } from "$lib/opportunity-ranking";
   import CopyableCode from "$lib/components/CopyableCode.svelte";
   import EmptyState from "$lib/components/EmptyState.svelte";
   import ErrorBanner from "$lib/components/ErrorBanner.svelte";
@@ -22,8 +29,15 @@
   let opportunity = $state<Opportunity | null>(null);
   let notFound = $state(false);
 
-  const tokenMissing = $derived(config.token.trim() === "");
+  const tokenMissing = $derived(operatorAuthMissing(config));
   const client = $derived(tokenMissing ? null : createClient(config));
+  // Lane G item 3 — "Why this score" only renders once the scorer has
+  // actually run (fitScore or fitExplanation present); never for a
+  // genuinely unscored opportunity.
+  const hasScore = $derived(
+    opportunity !== null && (opportunity.fitScore !== null || opportunity.fitExplanation !== null),
+  );
+  const excluded = $derived(opportunity !== null && isExcludedOpportunity(opportunity));
 
   async function load(): Promise<void> {
     saveConfig(config);
@@ -95,10 +109,13 @@
         <dd>{opportunity.title}</dd>
         <dt>Status</dt>
         <dd><Badge tone="neutral">{opportunity.status}</Badge></dd>
-        <dt>Fit score</dt>
-        <dd>{opportunity.fitScore === null ? "Not scored" : `${Math.round(opportunity.fitScore)} / 100`}</dd>
-        <dt>Fit explanation</dt>
-        <dd>{opportunity.fitExplanation ?? "Not scored"}</dd>
+        <dt>Score</dt>
+        <dd>
+          {opportunity.fitScore === null ? "Not scored" : `${Math.round(opportunity.fitScore)} / 100`}
+          {#if excluded}
+            <Badge tone="warning">excluded</Badge>
+          {/if}
+        </dd>
         <dt>Risk flags</dt>
         <dd>
           {#if opportunity.riskFlags.length === 0}
@@ -118,6 +135,20 @@
         <dd><FreshnessTag freshness={opportunity.freshness} /></dd>
       </dl>
     </Panel>
+
+    {#if hasScore}
+      <!-- Lane G item 3 — "Why this score": full score_explanation, only
+           rendered once the scorer has actually run. -->
+      <Panel title="Why this score" meta={excluded ? "excluded employer" : undefined}>
+        <p>
+          <strong>{opportunity.fitScore === null ? "Not scored" : `${Math.round(opportunity.fitScore)} / 100`}</strong>
+          {#if excluded}
+            <Badge tone="warning">excluded</Badge>
+          {/if}
+        </p>
+        <p class="ccc-empty">{opportunity.fitExplanation ?? "No explanation recorded."}</p>
+      </Panel>
+    {/if}
 
     <Panel title="Evidence" meta={`${opportunity.evidenceRefs.length} reference(s)`}>
       {#if opportunity.evidenceRefs.length === 0}
@@ -145,7 +176,7 @@
     </Panel>
 
     {#if client}
-      <Panel title="Score" meta="scorer_unbound today">
+      <Panel title="Score" meta="deterministic Intent scorer">
         <ScoreOpportunityAction {client} opportunityId={opportunity.opportunityId} />
       </Panel>
 

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from nats.js.errors import APIError, NotFoundError
 from ravenhelm_contracts import CorrelationContextV1, JobSearchCommandV1
+from ravenhelm_contracts.jobsearch_v1 import COMMAND_NAMES_V1
 
 from core.jobsearch_nats import (
     COMMAND_SUBJECTS,
@@ -101,9 +102,13 @@ def _command():
 
 
 def test_command_subject_registry_is_closed_and_bounded():
-    assert len(COMMAND_SUBJECTS) == 9
+    # COMMAND_SUBJECTS is derived from that shared catalog, so this bound tracks it.
+    assert len(COMMAND_SUBJECTS) == len(COMMAND_NAMES_V1)
     assert COMMAND_SUBJECTS["sources.ingest"] == (
         "ultradex.jobsearch.commands.v1.sources-ingest"
+    )
+    assert COMMAND_SUBJECTS["intent.set"] == (
+        "ultradex.jobsearch.commands.v1.intent-set"
     )
     assert COMMAND_SUBJECTS["outreach.send"].endswith(".outreach-send")
     assert lifecycle_subject("jobsearch.outreach.sent.v1") == (

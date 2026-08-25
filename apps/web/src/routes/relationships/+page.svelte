@@ -22,9 +22,6 @@
     error = null;
     try {
       saveConfig(config);
-      if (!config.token) {
-        throw new Error("Operator token required — set it on Command (`/`).");
-      }
       const client = createClient(config);
       const page = await client.listRelationships({ first: 50 });
       relationships = [...page.items];

@@ -363,3 +363,147 @@ describe("governed evidence reads", () => {
     ).rejects.toBeInstanceOf(UltradexSchemaError);
   });
 });
+
+describe("Milestone M4 domain projection reads", () => {
+  it("reads candidate profile and production ML depth", async () => {
+    const { syntheticCandidateProfile } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("profile", syntheticCandidateProfile),
+    ]);
+    const client = createClient(transport);
+
+    const profile = await client.getProfile();
+    expect(profile.candidateName).toBe("Nate Walker");
+    expect(profile.compensation.minBase).toBe(180000);
+    expect(profile.productionMl.llmOrchestration.name).toBe("LLM Orchestration & Systems");
+  });
+
+  it("reads leads list and individual lead", async () => {
+    const { syntheticLeadPage } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("leads", syntheticLeadPage),
+      graphqlData("lead", syntheticLeadPage.items[0]),
+    ]);
+    const client = createClient(transport);
+
+    const leads = await client.getLeads({ minFitScore: 80 });
+    expect(leads.items).toHaveLength(1);
+    expect(leads.items[0]?.employer).toBe("Anthropic");
+
+    const lead = await client.getLead("lead-synthetic-001");
+    expect(lead?.title).toBe("Principal AI Architect");
+  });
+
+  it("reads organizations list and individual organization", async () => {
+    const { syntheticOrganizationPage } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("organizations", syntheticOrganizationPage),
+      graphqlData("organization", syntheticOrganizationPage.items[0]),
+    ]);
+    const client = createClient(transport);
+
+    const orgs = await client.getOrganizations({ sortBy: "name" });
+    expect(orgs.items).toHaveLength(1);
+    expect(orgs.items[0]?.name).toBe("Anthropic");
+
+    const org = await client.getOrganization("org-synthetic-anthropic");
+    expect(org?.advocacyRating).toBe(95);
+  });
+
+  it("reads contacts list and individual contact with communication history", async () => {
+    const { syntheticContactPage } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("contacts", syntheticContactPage),
+      graphqlData("contact", syntheticContactPage.items[0]),
+    ]);
+    const client = createClient(transport);
+
+    const contacts = await client.getContacts({ search: "Alice" });
+    expect(contacts.items).toHaveLength(1);
+    expect(contacts.items[0]?.communicationHistory).toHaveLength(1);
+
+    const contact = await client.getContact("contact-synthetic-001");
+    expect(contact?.name).toBe("Alice Recruiter");
+  });
+
+  it("reads copilot next best actions", async () => {
+    const { syntheticNextBestActions } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("nextBestActions", syntheticNextBestActions),
+    ]);
+    const client = createClient(transport);
+
+    const actions = await client.getNextBestActions(5);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.urgency).toBe("P0");
+    expect(actions[0]?.actionType).toBe("reply_recruiter");
+  });
+
+  it("generates recruiter 3-pill replies", async () => {
+    const { syntheticRecruiterPillSet } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("generateRecruiterReplies", syntheticRecruiterPillSet),
+    ]);
+    const client = createClient(transport);
+
+    const replies = await client.generateRecruiterReplies({
+      senderName: "Alice Recruiter",
+      senderEmailOrHandle: "alice@anthropic.com",
+      subject: "Principal Architect Role",
+      bodyText: "Are you interested in chatting?",
+    });
+    expect(replies.senderName).toBe("Alice Recruiter");
+    expect(replies.pills).toHaveLength(1);
+    expect(replies.pills[0]?.pillType).toBe("accept_and_schedule");
+  });
+
+  it("computes availability slots and reads calendar events", async () => {
+    const { syntheticDailyAvailability, syntheticCalendarEvents } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("availability", syntheticDailyAvailability),
+      graphqlData("calendarEvents", syntheticCalendarEvents),
+    ]);
+    const client = createClient(transport);
+
+    const avail = await client.getAvailability({
+      startDate: "2026-08-25",
+      endDate: "2026-08-27",
+    });
+    expect(avail).toHaveLength(1);
+    expect(avail[0]?.slots30min[0]?.formattedCt).toContain("CT");
+
+    const events = await client.getCalendarEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.summary).toBe("1:1 Architecture Sync");
+  });
+
+  it("reads messages page", async () => {
+    const { syntheticMessagePage } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("messages", syntheticMessagePage),
+    ]);
+    const client = createClient(transport);
+
+    const messages = await client.getMessages({ channel: "gmail" });
+    expect(messages.items).toHaveLength(1);
+    expect(messages.items[0]?.subject).toBe("Re: Principal AI Architect");
+  });
+
+  it("reads interview debriefs and individual debrief", async () => {
+    const { syntheticInterviewDebriefPage } = await import("./fixtures.js");
+    const transport = new RecordingTransport([
+      graphqlData("interviewDebriefs", syntheticInterviewDebriefPage),
+      graphqlData("interviewDebrief", syntheticInterviewDebriefPage.items[0]),
+    ]);
+    const client = createClient(transport);
+
+    const debriefs = await client.getInterviewDebriefs({ opportunityId: "opp-synthetic-001" });
+    expect(debriefs.items).toHaveLength(1);
+    expect(debriefs.items[0]?.metadata.company).toBe("SoundHound");
+
+    const debrief = await client.getInterviewDebrief("debrief-synthetic-001");
+    expect(debrief?.fitAssessment.overallScore).toBe(94);
+    expect(debrief?.actionItems[0]?.priority).toBe("P0");
+  });
+});
+

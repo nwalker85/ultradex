@@ -10,6 +10,8 @@ import type {
   RelationshipPage,
 } from "@ultradex/sdk";
 
+import { isExcludedOpportunity, rankOpportunitiesByScore } from "./opportunity-ranking.js";
+
 /**
  * Command home (`/`) roll-up logic — FR-CMD-1..5 (PRD §6.1). Kept as pure,
  * client-free functions so every rule here is unit-testable with synthetic
@@ -184,8 +186,15 @@ export function isApprovalExpiringSoon(
 /**
  * FR-CMD-3 — builds the Needs Attention rail in the exact required order:
  * outreach `pending_approval`; then outreach `approved` expiring within 4h;
- * then opportunities `discovered`; then operations `pending`/`running`.
- * Each category's items keep the order they arrived in.
+ * then opportunities `discovered`; then operations `pending`/`running`. The
+ * two outreach categories and the operations category keep the order they
+ * arrived in. The `opportunity-discovered` category is the one exception
+ * (CCC Wave 2, Lane G): within that category only, items are ranked score
+ * descending with unscored (`fitScore === null`) opportunities last, and
+ * excluded-employer matches are dropped entirely — see
+ * `opportunity-ranking.ts`. This is intra-category ordering only; it never
+ * moves the `opportunity-discovered` category itself relative to the other
+ * three.
  */
 export function buildNeedsAttention(
   bundle: {
@@ -221,16 +230,28 @@ export function buildNeedsAttention(
     }
   }
 
-  for (const item of bundle.opportunities) {
-    if (item.status === "discovered") {
-      items.push({
-        id: item.opportunityId,
-        kind: "opportunity-discovered",
-        title: `${item.employer} — ${item.title}`,
-        reason: "discovered",
-        href: `/opportunities/${item.opportunityId}`,
-      });
-    }
+  // CCC Wave 2, Lane G — intra-category ordering only (FR-CMD-3's
+  // cross-category order above is unchanged: this still runs after the two
+  // outreach passes and before the operations pass). Within
+  // `opportunity-discovered`, rank by score descending with unscored
+  // (`fitScore === null`) opportunities last, and drop excluded-employer
+  // matches entirely — an excluded employer must never surface as "needs
+  // attention," score notwithstanding (Lane F1's scorer always gives an
+  // excluded match `fitScore === 0`, which is exactly the value a rail
+  // ordered "best first" would otherwise bury at the bottom instead of
+  // omitting, so this filters by `isExcludedOpportunity` on the
+  // explanation, never by score).
+  const discovered = bundle.opportunities.filter(
+    (item) => item.status === "discovered" && !isExcludedOpportunity(item),
+  );
+  for (const item of rankOpportunitiesByScore(discovered)) {
+    items.push({
+      id: item.opportunityId,
+      kind: "opportunity-discovered",
+      title: `${item.employer} — ${item.title}`,
+      reason: "discovered",
+      href: `/opportunities/${item.opportunityId}`,
+    });
   }
 
   for (const item of bundle.operations) {

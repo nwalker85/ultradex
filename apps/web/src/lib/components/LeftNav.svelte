@@ -166,6 +166,32 @@
       </svg>
       <span>Operations</span>
     </a>
+
+    <a
+      href="/settings"
+      class="ccc-leftnav__item"
+      class:ccc-leftnav__item--active={isActive("/settings")}
+      aria-current={isActive("/settings") ? "page" : undefined}
+    >
+      <svg
+        class="ccc-leftnav__icon"
+        viewBox="0 0 20 20"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="10" cy="10" r="2.5" />
+        <path
+          d="M10 3.5v1.2M10 15.3v1.2M3.5 10h1.2M15.3 10h1.2M5.4 5.4l.85.85M13.75 13.75l.85.85M5.4 14.6l.85-.85M13.75 6.25l.85-.85"
+        />
+      </svg>
+      <span>Settings</span>
+    </a>
   </nav>
 
   <div class="ccc-leftnav__footer">

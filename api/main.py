@@ -106,7 +106,7 @@ app.add_middleware(
 )
 
 # Import routes
-from .routes import contacts, analysis, health, operations
+from .routes import contacts, analysis, health, operations, profile
 from .routes.v2 import (
     commands,
     delegations,
@@ -115,6 +115,16 @@ from .routes.v2 import (
 )
 from .graphql.schema import get_graphql_context, schema
 
+app.include_router(
+    profile.router,
+    prefix="/api/v1/profile",
+    tags=["profile"],
+)
+app.include_router(
+    profile.router,
+    prefix="/profile",
+    tags=["profile"],
+)
 app.include_router(
     contacts.router,
     prefix="/api/v1",

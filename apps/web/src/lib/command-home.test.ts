@@ -296,6 +296,100 @@ describe("buildNeedsAttention (FR-CMD-3 ordering)", () => {
   it("returns an empty rail when every bundle is empty", () => {
     expect(buildNeedsAttention({ outreach: [], opportunities: [], operations: [] }, NOW)).toEqual([]);
   });
+
+  describe("opportunity-discovered intra-category ordering (CCC Wave 2, Lane G)", () => {
+    it("ranks discovered opportunities by score descending, unscored last", () => {
+      const items = buildNeedsAttention(
+        {
+          outreach: [],
+          opportunities: [
+            opportunity({ opportunityId: "opp-unscored", status: "discovered", fitScore: null }),
+            opportunity({ opportunityId: "opp-high", status: "discovered", fitScore: 90 }),
+            opportunity({ opportunityId: "opp-mid", status: "discovered", fitScore: 40 }),
+          ],
+          operations: [],
+        },
+        NOW,
+      );
+      expect(items.map((item) => item.id)).toEqual(["opp-high", "opp-mid", "opp-unscored"]);
+    });
+
+    it("never treats a null fitScore as 0 — unscored still ranks below a genuine 0", () => {
+      const items = buildNeedsAttention(
+        {
+          outreach: [],
+          opportunities: [
+            opportunity({ opportunityId: "opp-unscored", status: "discovered", fitScore: null }),
+            opportunity({
+              opportunityId: "opp-zero",
+              status: "discovered",
+              fitScore: 0,
+              fitExplanation: "role_family no match (weight=0.4)",
+            }),
+          ],
+          operations: [],
+        },
+        NOW,
+      );
+      expect(items.map((item) => item.id)).toEqual(["opp-zero", "opp-unscored"]);
+    });
+
+    it("excludes discovered opportunities whose explanation marks them excluded — they never appear, at any score", () => {
+      const items = buildNeedsAttention(
+        {
+          outreach: [],
+          opportunities: [
+            opportunity({
+              opportunityId: "opp-excluded",
+              status: "discovered",
+              fitScore: 0,
+              fitExplanation:
+                "excluded: employer in exclusions (current employer) — 'IntelePeer' matches 'IntelePeer'",
+            }),
+            opportunity({ opportunityId: "opp-kept", status: "discovered", fitScore: 10 }),
+          ],
+          operations: [],
+        },
+        NOW,
+      );
+      expect(items.map((item) => item.id)).toEqual(["opp-kept"]);
+    });
+
+    it("does not disturb FR-CMD-3's cross-category order — opportunity-discovered still sits between the two outreach categories and operations", () => {
+      const items = buildNeedsAttention(
+        {
+          outreach: [
+            outreach({ outreachId: "out-pending", status: "pending_approval" }),
+            outreach({
+              outreachId: "out-approved-expiring",
+              status: "approved",
+              approvalExpiresAt: "2026-08-15T14:00:00Z",
+            }),
+          ],
+          opportunities: [
+            opportunity({ opportunityId: "opp-low", status: "discovered", fitScore: 10 }),
+            opportunity({ opportunityId: "opp-high", status: "discovered", fitScore: 99 }),
+          ],
+          operations: [operation({ id: "op-running", status: "running" })],
+        },
+        NOW,
+      );
+      expect(items.map((item) => item.kind)).toEqual([
+        "outreach-pending-approval",
+        "outreach-approval-expiring",
+        "opportunity-discovered",
+        "opportunity-discovered",
+        "operation-active",
+      ]);
+      expect(items.map((item) => item.id)).toEqual([
+        "out-pending",
+        "out-approved-expiring",
+        "opp-high",
+        "opp-low",
+        "op-running",
+      ]);
+    });
+  });
 });
 
 describe("isNextActionOverdue / overdueApplications (FR-CMD-4)", () => {

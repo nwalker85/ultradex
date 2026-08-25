@@ -4,8 +4,8 @@ from datetime import datetime
 from typing import Optional, List
 from enum import Enum
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, String, Float, DateTime, Integer, Text, create_engine, JSON
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import Column, String, Float, DateTime, Integer, Text, create_engine, JSON, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 import uuid
 
 # Pydantic models (API/SDK)
@@ -177,11 +177,31 @@ class ContactDB(Base):
     outreach_strategy = Column(Text, nullable=True)
     suggested_timing = Column(String(255), nullable=True)
     last_analyzed = Column(DateTime, nullable=True)
+
+    # CRM Domain Extensions (Milestone M2, Requirement R2)
+    advocacy_score = Column(Float, nullable=True, index=True)
+    organization_id = Column(
+        String(64),
+        ForeignKey("jobsearch_organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    crm_notes = Column(Text, nullable=True)
+    communication_history = Column(JSON, nullable=False, default=list)
+    linkedin_url = Column(String(500), nullable=True)
+    relationship_tier = Column(String(32), nullable=True, index=True)
     
     # Metadata
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     synced_at = Column(DateTime, default=datetime.now)
+
+    # ORM Relationship
+    organization = relationship(
+        "OrganizationDB",
+        back_populates="contacts",
+        foreign_keys=[organization_id],
+    )
 
 
 class AnalysisRunDB(Base):

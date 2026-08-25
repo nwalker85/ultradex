@@ -12,7 +12,7 @@
 
 <Banner tone="info">
   <p class="ccc-token-required">
-    Operator token required — set it on <a href="/">Command</a>.
+    Operator token required — set it in <a href="/settings">Settings</a>.
   </p>
 </Banner>
 

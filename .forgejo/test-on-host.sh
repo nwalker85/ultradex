@@ -301,7 +301,14 @@ ultradex_ts_gates() {
     echo "::: sdk/typescript absent — skip :::"
   fi
 
-  if [ -f integrations/obsidian-ultradex/package.json ]; then
+  # A component carrying DEPRECATED.md is frozen/unowned and MUST NOT gate a merge.
+  # The Obsidian operator was frozen 2026-08-05 (ADR-014 amendment); Career Director
+  # glass is apps/web. Its command-forms record is exhaustive over the command union,
+  # so every new command would otherwise break an unowned build.
+  if [ -f integrations/obsidian-ultradex/DEPRECATED.md ]; then
+    echo ""
+    echo "::: obsidian plugin frozen (DEPRECATED.md, ADR-014) — not a merge gate :::"
+  elif [ -f integrations/obsidian-ultradex/package.json ]; then
     echo ""
     echo "=== ultradex: obsidian plugin ==="
     if [ ! -f sdk/typescript/package.json ]; then

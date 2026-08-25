@@ -9,6 +9,7 @@ from typing import Callable, Generic, Literal, TypeVar
 from ravenhelm_contracts import (
     ApplicationV1,
     ExecutionReceiptV1,
+    JobSearchIntentV1,
     OpportunityV1,
     OutreachV1,
     ProjectionFreshnessV1,
@@ -26,10 +27,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .jobsearch_models import (
+    INTENT_SINGLETON_ID,
     ApplicationProjectionDB,
+    IntentProjectionDB,
     JobSearchApprovalDB,
     JobSearchExecutionReceiptDB,
+    LeadDB,
     OpportunityProjectionDB,
+    OrganizationDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
     RelationshipProjectionDB,
@@ -182,6 +187,12 @@ class JobSearchProjectionRepository:
             return None
         return self._outreach(row, self._checkpoint("outreach"))
 
+    def get_intent(self) -> JobSearchIntentV1 | None:
+        row = self._session.get(IntentProjectionDB, INTENT_SINGLETON_ID)
+        if row is None:
+            return None
+        return self._intent(row, self._checkpoint("intent"))
+
     def get_approval(self, approval_id: str) -> ApprovalEvidence | None:
         row = self._session.scalar(
             select(JobSearchApprovalDB).where(
@@ -204,6 +215,69 @@ class JobSearchProjectionRepository:
         if row is None:
             return None
         return self._execution_receipt(row)
+
+    def get_lead(self, lead_id: str) -> LeadDB | None:
+        return self._session.scalar(
+            select(LeadDB).where(LeadDB.id == lead_id)
+        )
+
+    def list_leads(
+        self,
+        first: int = 20,
+        after: str | None = None,
+        min_fit_score: float | None = None,
+        state: str | None = None,
+        employer: str | None = None,
+    ) -> ProjectionPage[LeadDB]:
+        limit = _bounded_first(first)
+        statement = select(LeadDB)
+        if after is not None:
+            statement = statement.where(LeadDB.id > after)
+        if min_fit_score is not None:
+            statement = statement.where(LeadDB.fit_score >= min_fit_score)
+        if state is not None:
+            statement = statement.where(LeadDB.state == state)
+        if employer is not None:
+            statement = statement.where(LeadDB.employer == employer)
+        statement = statement.order_by(LeadDB.id.asc()).limit(limit + 1)
+        rows = list(self._session.scalars(statement))
+        freshness = self._checkpoint("leads")
+        has_next = len(rows) > limit
+        page_rows = rows[:limit]
+        next_cursor = page_rows[-1].id if has_next else None
+        return ProjectionPage(
+            items=tuple(page_rows),
+            freshness=freshness,
+            next_cursor=next_cursor,
+        )
+
+    def get_organization(self, organization_id: str) -> OrganizationDB | None:
+        return self._session.scalar(
+            select(OrganizationDB).where(OrganizationDB.id == organization_id)
+        )
+
+    def list_organizations(
+        self,
+        first: int = 20,
+        after: str | None = None,
+        sort_by: str = "name",
+    ) -> ProjectionPage[OrganizationDB]:
+        limit = _bounded_first(first)
+        statement = select(OrganizationDB)
+        if after is not None:
+            statement = statement.where(OrganizationDB.id > after)
+        order_col = OrganizationDB.name if sort_by == "name" else OrganizationDB.id
+        statement = statement.order_by(order_col.asc(), OrganizationDB.id.asc()).limit(limit + 1)
+        rows = list(self._session.scalars(statement))
+        freshness = self._checkpoint("organizations")
+        has_next = len(rows) > limit
+        page_rows = rows[:limit]
+        next_cursor = page_rows[-1].id if has_next else None
+        return ProjectionPage(
+            items=tuple(page_rows),
+            freshness=freshness,
+            next_cursor=next_cursor,
+        )
 
     def list_opportunities(
         self,
@@ -352,6 +426,7 @@ class JobSearchProjectionRepository:
             | ApplicationProjectionDB
             | RelationshipProjectionDB
             | OutreachProjectionDB
+            | IntentProjectionDB
         ),
         freshness: ProjectionFreshnessV1 | None,
     ) -> dict[str, object]:
@@ -456,6 +531,28 @@ class JobSearchProjectionRepository:
             ),
         )
 
+    def _intent(
+        self,
+        row: IntentProjectionDB,
+        freshness: ProjectionFreshnessV1 | None,
+    ) -> JobSearchIntentV1:
+        return JobSearchIntentV1.from_dict(
+            {
+                "intent_id": row.id,
+                "target_role_families": list(row.target_role_families or []),
+                "target_domains": list(row.target_domains or []),
+                "seniority_band": row.seniority_band,
+                "location_preference": row.location_preference,
+                "remote_preference": row.remote_preference,
+                "employer_exclusions": list(row.employer_exclusions or []),
+                "weights": dict(row.weights or {}),
+                "narrative": row.narrative,
+                "freshness": self._required_freshness(row, freshness),
+                "created_at": _timestamp(row.created_at),
+                "updated_at": _timestamp(row.updated_at),
+            }
+        )
+
     @staticmethod
     def _approval(row: JobSearchApprovalDB) -> ApprovalEvidence:
         approval_id = _required_string(row.approval_id, "approval_id")
@@ -520,3 +617,45 @@ class JobSearchProjectionRepository:
             created_at=_timestamp(row.created_at),
             completed_at=_timestamp(signed_completed_at),
         )
+
+
+def get_lead(db: Session, lead_id: str) -> LeadDB | None:
+    """Read a single lead projection by ID."""
+    return JobSearchProjectionRepository(db).get_lead(lead_id)
+
+
+def list_leads(
+    db: Session,
+    first: int = 20,
+    after: str | None = None,
+    min_fit_score: float | None = None,
+    state: str | None = None,
+    employer: str | None = None,
+) -> ProjectionPage[LeadDB]:
+    """Read a page of lead projections with optional filtering."""
+    return JobSearchProjectionRepository(db).list_leads(
+        first=first,
+        after=after,
+        min_fit_score=min_fit_score,
+        state=state,
+        employer=employer,
+    )
+
+
+def get_organization(db: Session, organization_id: str) -> OrganizationDB | None:
+    """Read a single organization projection by ID."""
+    return JobSearchProjectionRepository(db).get_organization(organization_id)
+
+
+def list_organizations(
+    db: Session,
+    first: int = 20,
+    after: str | None = None,
+    sort_by: str = "name",
+) -> ProjectionPage[OrganizationDB]:
+    """Read a page of organization projections."""
+    return JobSearchProjectionRepository(db).list_organizations(
+        first=first,
+        after=after,
+        sort_by=sort_by,
+    )

@@ -74,7 +74,7 @@ def compute_dex_delta(
         last = known.get("last_contacted")
         if last is not None and last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
-        if last is None or (now - last).days > neglect_days:
+        if last is not None and (now - last).days > neglect_days:
             delta["neglected"].append(canonical)
 
     for bucket in delta.values():
@@ -184,6 +184,20 @@ class DexDeltaSourceAdapter:
             commitment=stashed["commitment"],
             redacted_summary=stashed["redacted_summary"],
         )
+
+
+class RoutedSourceAdapter:
+    """Dispatch sources.ingest to the adapter bound for source_kind."""
+
+    def __init__(self, adapters: Mapping[str, object]) -> None:
+        self._adapters = dict(adapters)
+
+    async def ingest(self, command: JobSearchCommandV1) -> EvidenceIngestResult:
+        source_kind = command.parameters.get("source_kind")
+        adapter = self._adapters.get(str(source_kind) if source_kind else "")
+        if adapter is None:
+            raise DomainRefusal("source_adapter_unbound")
+        return await adapter.ingest(command)
 
 
 class RedisSweepStash:

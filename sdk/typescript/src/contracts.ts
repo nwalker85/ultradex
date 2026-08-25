@@ -107,12 +107,20 @@ export const JOB_SEARCH_COMMAND_NAMES = [
   "sources.ingest",
   "opportunities.create",
   "opportunities.score",
+  "applications.create",
   "applications.transition",
   "relationships.sync",
   "outreach.prepare",
   "outreach.approve",
   "outreach.send",
+  "outreach.cancel",
   "evidence.export",
+  "leads.create",
+  "leads.convert",
+  "organizations.create",
+  "organizations.update",
+  "workspace.initialize",
+  "intent.set",
 ] as const;
 
 export const jobSearchCommandNameSchema = z.enum(
@@ -216,6 +224,96 @@ export const evidenceExportParametersSchema = z
   })
   .strict();
 
+// CRM Governed Command Parameter Schemas
+export const leadCreateParametersSchema = z
+  .object({
+    employer: nonEmptyStringSchema,
+    title: nonEmptyStringSchema,
+    sourceBoard: nonEmptyStringSchema.optional(),
+    externalId: nonEmptyStringSchema.optional(),
+    organizationId: nonEmptyStringSchema.optional(),
+    location: nonEmptyStringSchema.optional(),
+    remoteType: nonEmptyStringSchema.optional(),
+    salaryMin: z.number().int().positive().optional(),
+    salaryMax: z.number().int().positive().optional(),
+    salaryCurrency: nonEmptyStringSchema.optional(),
+    url: z.string().optional(),
+    description: z.string().optional(),
+    requirements: z.array(nonEmptyStringSchema).optional(),
+    fitScore: z.number().min(0).max(100).optional(),
+    matchBreakdown: z.record(z.string(), jsonValueSchema).optional(),
+    riskFlags: z.array(nonEmptyStringSchema).optional(),
+  })
+  .strict();
+
+export const leadConvertParametersSchema = z
+  .object({
+    leadId: nonEmptyStringSchema,
+    stage: applicationStatusSchema.optional(),
+    occurredAt: isoTimestampSchema.optional(),
+    customTitle: nonEmptyStringSchema.optional(),
+    targetRoleFamily: nonEmptyStringSchema.optional(),
+    contactRefs: z.array(nonEmptyStringSchema).optional(),
+    nextAction: nonEmptyStringSchema.optional(),
+    nextActionDeadline: isoTimestampSchema.optional(),
+  })
+  .strict();
+
+export const organizationCreateParametersSchema = z
+  .object({
+    name: nonEmptyStringSchema,
+    domain: nonEmptyStringSchema.optional(),
+    industry: nonEmptyStringSchema.optional(),
+    size: nonEmptyStringSchema.optional(),
+    advocacyRating: z.number().min(0).max(100).optional(),
+    notes: z.string().optional(),
+  })
+  .strict();
+
+export const organizationUpdateParametersSchema = z
+  .object({
+    organizationId: nonEmptyStringSchema,
+    name: nonEmptyStringSchema.optional(),
+    domain: nonEmptyStringSchema.optional(),
+    industry: nonEmptyStringSchema.optional(),
+    size: nonEmptyStringSchema.optional(),
+    advocacyRating: z.number().min(0).max(100).optional(),
+    notes: z.string().optional(),
+  })
+  .strict();
+
+export const applicationCreateParametersSchema = z
+  .object({
+    opportunityId: nonEmptyStringSchema,
+    stage: applicationStatusSchema.optional(),
+    occurredAt: isoTimestampSchema.optional(),
+    sourceEvidenceId: opaqueReferenceSchema("evidence").optional(),
+  })
+  .strict();
+
+export const outreachCancelParametersSchema = z
+  .object({
+    outreachId: nonEmptyStringSchema,
+    reason: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const workspaceInitializeParametersSchema = z
+  .object({
+    workspaceId: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const intentSetParametersSchema = z
+  .object({
+    targetRoleFamilies: z.array(nonEmptyStringSchema).optional(),
+    targetDomains: z.array(nonEmptyStringSchema).optional(),
+    seniorityBand: nonEmptyStringSchema.optional(),
+    locationPreference: nonEmptyStringSchema.optional(),
+    remotePreference: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
 export const jobSearchCommandSchema = z.discriminatedUnion("commandName", [
   z
     .object({
@@ -233,6 +331,12 @@ export const jobSearchCommandSchema = z.discriminatedUnion("commandName", [
     .object({
       commandName: z.literal("opportunities.score"),
       parameters: opportunityScoreParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
+      commandName: z.literal("applications.create"),
+      parameters: applicationCreateParametersSchema,
     })
     .strict(),
   z
@@ -267,8 +371,50 @@ export const jobSearchCommandSchema = z.discriminatedUnion("commandName", [
     .strict(),
   z
     .object({
+      commandName: z.literal("outreach.cancel"),
+      parameters: outreachCancelParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
       commandName: z.literal("evidence.export"),
       parameters: evidenceExportParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
+      commandName: z.literal("leads.create"),
+      parameters: leadCreateParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
+      commandName: z.literal("leads.convert"),
+      parameters: leadConvertParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
+      commandName: z.literal("organizations.create"),
+      parameters: organizationCreateParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
+      commandName: z.literal("organizations.update"),
+      parameters: organizationUpdateParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
+      commandName: z.literal("workspace.initialize"),
+      parameters: workspaceInitializeParametersSchema,
+    })
+    .strict(),
+  z
+    .object({
+      commandName: z.literal("intent.set"),
+      parameters: intentSetParametersSchema,
     })
     .strict(),
 ]);
@@ -448,11 +594,11 @@ export const operationSchema = z
 
 export const operationLifecycleEventSchema = z
   .object({
-    id: z.number().int().positive(),
+    id: z.number().int().nonnegative(),
     operationId: nonEmptyStringSchema,
     eventType: nonEmptyStringSchema,
     timestamp: isoTimestampSchema,
-    payload: jsonValueSchema,
+    payload: jsonValueSchema.nullable(),
   })
   .strict();
 
@@ -461,61 +607,11 @@ export const approvalEvidenceSchema = z
     approvalId: nonEmptyStringSchema,
     outreachId: nonEmptyStringSchema,
     messageCommitment: sha256DigestSchema,
-    channel: z.enum(["gmail", "linkedin", "manual"]),
+    channel: outreachChannelSchema,
     approvedBy: nonEmptyStringSchema,
     issuedAt: isoTimestampSchema,
     expiresAt: isoTimestampSchema,
-    status: z.enum(["approved", "expired", "revoked"]),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    if (Date.parse(value.expiresAt) <= Date.parse(value.issuedAt)) {
-      context.addIssue({
-        code: "custom",
-        message: "Approval expiry must follow issuance",
-        path: ["expiresAt"],
-      });
-    }
-  });
-
-const purposeBoundCommitmentSchema = z
-  .object({
-    scheme: z.enum([
-      "hmac_sha256_v1",
-      "sha256_high_entropy_ciphertext_v1",
-    ]),
-    purpose: nonEmptyStringSchema,
-    digest: sha256DigestSchema,
-  })
-  .strict();
-
-const signatureEnvelopeSchema = z
-  .object({
-    algorithm: z.literal("ed25519"),
-    key_id: pairwiseIdSchema,
-    signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/u),
-  })
-  .strict();
-
-const chainIdentitySchema = z
-  .object({
-    ledger_family: z.literal("daml"),
-    network_commitment: purposeBoundCommitmentSchema,
-    ledger_pairwise_id: pairwiseIdSchema,
-    participant_pairwise_id: pairwiseIdSchema,
-  })
-  .strict();
-
-const damlTransactionSchema = z
-  .object({
-    contract_version: z.literal("accountability.v1"),
-    chain_identity: chainIdentitySchema,
-    command_id: nonEmptyStringSchema,
-    transaction_id: nonEmptyStringSchema.nullable(),
-    status: z.enum(["submitted", "committed", "rejected"]),
-    submitted_at: wholeMinuteTimestampSchema,
-    recorded_at: wholeMinuteTimestampSchema.nullable(),
-    rejection_code: nonEmptyStringSchema.nullable(),
+    status: z.literal("approved"),
   })
   .strict();
 
@@ -525,58 +621,48 @@ export const executionReceiptPayloadSchema = z
     receipt_id: opaqueIdSchema,
     event_id: opaqueIdSchema,
     stream_pairwise_id: pairwiseIdSchema,
-    sequence: z.number().int().nonnegative(),
+    sequence: z.number().int().positive(),
     subject_pairwise_id: pairwiseIdSchema,
-    tenant_scope: purposeBoundCommitmentSchema,
+    tenant_scope: z
+      .object({
+        scheme: z.literal("hmac_sha256_v1"),
+        purpose: nonEmptyStringSchema,
+        digest: sha256DigestSchema,
+      })
+      .strict(),
     purpose: nonEmptyStringSchema,
     request_id: opaqueIdSchema,
     idempotency_key: opaqueIdSchema,
-    action_commitment: purposeBoundCommitmentSchema,
+    action_commitment: z
+      .object({
+        scheme: z.literal("hmac_sha256_v1"),
+        purpose: nonEmptyStringSchema,
+        digest: sha256DigestSchema,
+      })
+      .strict(),
     execution_id: opaqueIdSchema,
     executor_pairwise_id: pairwiseIdSchema,
     status: z.enum(["succeeded", "failed", "refused"]),
-    started_at: wholeMinuteTimestampSchema,
+    started_at: isoTimestampSchema,
     completed_at: wholeMinuteTimestampSchema,
-    result_commitment: purposeBoundCommitmentSchema.nullable(),
-    reason_code: z
-      .enum([
-        "policy_denied",
-        "executor_failure",
-        "authority_expired",
-        "safety_refusal",
-      ])
-      .nullable(),
-    daml_transaction: damlTransactionSchema.nullable(),
-    signature: signatureEnvelopeSchema,
+    result_commitment: z
+      .object({
+        scheme: z.literal("hmac_sha256_v1"),
+        purpose: nonEmptyStringSchema,
+        digest: sha256DigestSchema,
+      })
+      .strict(),
+    reason_code: nonEmptyStringSchema.nullable(),
+    daml_transaction: jsonValueSchema.nullable(),
+    signature: z
+      .object({
+        algorithm: z.literal("ed25519"),
+        key_id: pairwiseIdSchema,
+        signature: nonEmptyStringSchema,
+      })
+      .strict(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (Date.parse(value.completed_at) < Date.parse(value.started_at)) {
-      context.addIssue({
-        code: "custom",
-        message: "Receipt completion cannot precede start",
-        path: ["completed_at"],
-      });
-    }
-    if (
-      value.status === "succeeded" &&
-      (value.result_commitment === null || value.reason_code !== null)
-    ) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "Successful receipts require result_commitment and no reason_code",
-        path: ["status"],
-      });
-    }
-    if (value.status !== "succeeded" && value.reason_code === null) {
-      context.addIssue({
-        code: "custom",
-        message: "Failed or refused receipts require reason_code",
-        path: ["reason_code"],
-      });
-    }
-  });
+  .strict();
 
 export const executionReceiptEvidenceSchema = z
   .object({
@@ -624,15 +710,615 @@ export const executionReceiptEvidenceSchema = z
     }
   });
 
-const contractHandleWireShape = {
-  contract_id: nonEmptyStringSchema,
-  operation_id: nonEmptyStringSchema,
-  submitted_at: isoTimestampSchema,
-  correlation_id: nonEmptyStringSchema,
-  expires_at: isoTimestampSchema.nullable().optional(),
-  status_url: nonEmptyStringSchema.nullable().optional(),
-  events_url: nonEmptyStringSchema.nullable().optional(),
-};
+// ===========================================================================
+// Milestone M4: Candidate Profile & Taxonomy Schemas
+// ===========================================================================
+
+export const skillTierSchema = z.enum([
+  "expert",
+  "advanced",
+  "intermediate",
+  "familiar",
+]);
+
+export const skillCategorySchema = z.enum([
+  "ai_ml",
+  "distributed_systems",
+  "cloud_infra",
+  "backend_api",
+  "frontend_fullstack",
+  "security_governance",
+  "leadership_strategy",
+]);
+
+export const skillItemSchema = z
+  .object({
+    name: nonEmptyStringSchema,
+    category: skillCategorySchema,
+    tier: skillTierSchema,
+    yearsExperience: z.number().int().nonnegative(),
+    keywords: z.array(nonEmptyStringSchema),
+    description: z.string(),
+    highlights: z.array(nonEmptyStringSchema),
+  })
+  .strict();
+
+export const mlDepthSubdomainSchema = z
+  .object({
+    name: nonEmptyStringSchema,
+    experienceLevel: nonEmptyStringSchema,
+    years: z.number().int().nonnegative(),
+    coreTechnologies: z.array(nonEmptyStringSchema),
+    architecturalPatterns: z.array(nonEmptyStringSchema),
+    productionMilestones: z.array(nonEmptyStringSchema),
+  })
+  .strict();
+
+export const productionMLDepthSchema = z
+  .object({
+    llmOrchestration: mlDepthSubdomainSchema,
+    asrTtsVoice: mlDepthSubdomainSchema,
+    fineTuningAdaptation: mlDepthSubdomainSchema,
+    embeddingsRag: mlDepthSubdomainSchema,
+    agentLoopsTooling: mlDepthSubdomainSchema,
+    inferenceHardware: mlDepthSubdomainSchema,
+    llmSystems: z.array(nonEmptyStringSchema),
+    agenticOrchestration: z.array(nonEmptyStringSchema),
+    voiceSpeechAi: z.array(nonEmptyStringSchema),
+    ragVectorSearch: z.array(nonEmptyStringSchema),
+    fineTuningEvals: z.array(nonEmptyStringSchema),
+    edgeQuantization: z.array(nonEmptyStringSchema),
+  })
+  .strict();
+
+export const workExperienceItemSchema = z
+  .object({
+    company: nonEmptyStringSchema,
+    role: nonEmptyStringSchema,
+    startDate: nonEmptyStringSchema,
+    endDate: nonEmptyStringSchema.nullable(),
+    isCurrent: z.boolean(),
+    location: nonEmptyStringSchema,
+    remoteType: nonEmptyStringSchema,
+    summary: z.string(),
+    keyAchievements: z.array(nonEmptyStringSchema),
+    technologies: z.array(nonEmptyStringSchema),
+  })
+  .strict();
+
+export const educationItemSchema = z
+  .object({
+    institution: nonEmptyStringSchema,
+    degree: nonEmptyStringSchema,
+    fieldOfStudy: nonEmptyStringSchema,
+    graduationYear: z.number().int().nullable(),
+    notes: z.string().nullable(),
+  })
+  .strict();
+
+export const projectHighlightSchema = z
+  .object({
+    name: nonEmptyStringSchema,
+    role: nonEmptyStringSchema,
+    description: z.string(),
+    url: z.string().nullable(),
+    technologies: z.array(nonEmptyStringSchema),
+  })
+  .strict();
+
+export const targetRoleConfigSchema = z
+  .object({
+    targetRoles: z.array(nonEmptyStringSchema),
+    targetRoleFamilies: z.array(nonEmptyStringSchema),
+    targetDomains: z.array(nonEmptyStringSchema),
+    seniorityBand: nonEmptyStringSchema,
+    locationPreference: nonEmptyStringSchema,
+    remotePreference: nonEmptyStringSchema,
+  })
+  .strict();
+
+export const compensationExpectationsSchema = z
+  .object({
+    minBase: z.number().int().positive(),
+    targetTotal: z.number().int().positive(),
+    minTotal: z.number().int().positive(),
+    baseMinimumUsd: z.number().int().positive().optional(),
+    targetTotalCompUsd: z.number().int().positive().optional(),
+    minimumTotalCompUsd: z.number().int().positive().optional(),
+    equityPreference: nonEmptyStringSchema.optional(),
+    currency: nonEmptyStringSchema,
+    employmentType: nonEmptyStringSchema.optional(),
+    locationPreference: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const candidateBioSchema = z
+  .object({
+    fullName: nonEmptyStringSchema,
+    headline: nonEmptyStringSchema,
+    summary: nonEmptyStringSchema,
+    email: z.string().nullable(),
+    phone: z.string().nullable(),
+    location: nonEmptyStringSchema,
+    linkedinUrl: z.string().nullable(),
+    githubUrl: z.string().nullable(),
+    portfolioUrl: z.string().nullable(),
+  })
+  .strict();
+
+export const candidateProfileSchema = z
+  .object({
+    candidateName: nonEmptyStringSchema,
+    title: nonEmptyStringSchema,
+    resumeText: z.string().optional(),
+    bio: candidateBioSchema,
+    targetRoles: z.array(nonEmptyStringSchema),
+    targetDomains: z.array(nonEmptyStringSchema),
+    targetRoleFamilies: z.array(nonEmptyStringSchema).optional(),
+    targetRoleConfig: targetRoleConfigSchema.optional(),
+    compensation: compensationExpectationsSchema,
+    skills: z.array(skillItemSchema),
+    expertSkills: z.array(skillItemSchema).optional(),
+    advancedSkills: z.array(skillItemSchema).optional(),
+    productionMl: productionMLDepthSchema,
+    experience: z.array(workExperienceItemSchema).optional(),
+    education: z.array(educationItemSchema).optional(),
+    projects: z.array(projectHighlightSchema).optional(),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+// ===========================================================================
+// Milestone M4: Leads & Organizations Schemas
+// ===========================================================================
+
+export const leadStatusSchema = z.enum([
+  "discovered",
+  "unapplied",
+  "converted",
+  "dismissed",
+]);
+
+export const leadSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    sourceBoard: nonEmptyStringSchema,
+    externalId: nonEmptyStringSchema.nullable(),
+    employer: nonEmptyStringSchema,
+    organizationId: nonEmptyStringSchema.nullable(),
+    title: nonEmptyStringSchema,
+    location: nonEmptyStringSchema.nullable(),
+    remoteType: nonEmptyStringSchema,
+    salaryMin: z.number().int().nullable(),
+    salaryMax: z.number().int().nullable(),
+    salaryCurrency: nonEmptyStringSchema,
+    url: z.string().nullable(),
+    description: z.string().nullable(),
+    requirements: z.array(nonEmptyStringSchema),
+    fitScore: z.number().min(0).max(100).nullable(),
+    matchBreakdown: z.record(z.string(), jsonValueSchema),
+    riskFlags: z.array(nonEmptyStringSchema),
+    state: leadStatusSchema,
+    convertedOpportunityId: nonEmptyStringSchema.nullable(),
+    freshness: projectionFreshnessSchema.nullable().optional(),
+    createdAt: isoTimestampSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const leadPageSchema = z
+  .object({
+    items: z.array(leadSchema),
+    freshness: projectionFreshnessSchema.nullable(),
+    nextCursor: nonEmptyStringSchema.nullable(),
+  })
+  .strict();
+
+export const organizationSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    name: nonEmptyStringSchema,
+    domain: nonEmptyStringSchema.nullable(),
+    industry: nonEmptyStringSchema.nullable(),
+    size: nonEmptyStringSchema.nullable(),
+    advocacyRating: z.number().min(0).max(100).nullable(),
+    notes: z.string().nullable(),
+    freshness: projectionFreshnessSchema.nullable().optional(),
+    createdAt: isoTimestampSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const organizationPageSchema = z
+  .object({
+    items: z.array(organizationSchema),
+    freshness: projectionFreshnessSchema.nullable(),
+    nextCursor: nonEmptyStringSchema.nullable(),
+  })
+  .strict();
+
+// ===========================================================================
+// Milestone M4: Contacts Schemas
+// ===========================================================================
+
+export const communicationEntrySchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    timestamp: isoTimestampSchema,
+    channel: z.enum(["gmail", "linkedin", "dex"]),
+    direction: z.enum(["inbound", "outbound"]),
+    subject: nonEmptyStringSchema,
+    summary: z.string(),
+    messageId: nonEmptyStringSchema.nullable().optional(),
+    evidenceRef: nonEmptyStringSchema.nullable().optional(),
+    threadId: nonEmptyStringSchema.nullable().optional(),
+  })
+  .strict();
+
+export const contactSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    name: nonEmptyStringSchema,
+    email: z.string().nullable(),
+    company: nonEmptyStringSchema.nullable(),
+    jobTitle: nonEmptyStringSchema.nullable(),
+    phone: z.string().nullable(),
+    notes: z.string().nullable(),
+    lastContacted: isoTimestampSchema.nullable(),
+    aiValue: z.number().min(0).max(100).nullable(),
+    aiReason: z.string().nullable(),
+    outreachStrategy: z.string().nullable(),
+    suggestedTiming: z.string().nullable(),
+    lastAnalyzed: isoTimestampSchema.nullable(),
+    advocacyScore: z.number().min(0).max(100).nullable(),
+    organizationId: nonEmptyStringSchema.nullable(),
+    crmNotes: z.string().nullable(),
+    communicationHistory: z.array(communicationEntrySchema),
+    linkedinUrl: z.string().nullable(),
+    relationshipTier: nonEmptyStringSchema.nullable(),
+    createdAt: isoTimestampSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const contactPageSchema = z
+  .object({
+    items: z.array(contactSchema),
+    freshness: projectionFreshnessSchema.nullable(),
+    nextCursor: nonEmptyStringSchema.nullable(),
+  })
+  .strict();
+
+// ===========================================================================
+// Milestone M4: Copilot Next Best Actions & Recruiter Replies Schemas
+// ===========================================================================
+
+export const actionUrgencySchema = z.enum(["P0", "P1", "P2", "P3"]);
+
+export const actionTypeSchema = z.enum([
+  "reply_recruiter",
+  "follow_up_application",
+  "complete_application_task",
+  "convert_high_fit_lead",
+  "network_outreach",
+  "send_thank_you",
+  "schedule_interview",
+]);
+
+export const nextBestActionSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    urgency: actionUrgencySchema,
+    actionType: actionTypeSchema,
+    title: nonEmptyStringSchema,
+    description: z.string(),
+    entityType: z.enum([
+      "lead",
+      "application",
+      "opportunity",
+      "contact",
+      "message",
+    ]),
+    entityId: nonEmptyStringSchema,
+    score: z.number().min(0).max(100),
+    dueDate: isoTimestampSchema.nullable(),
+    actionUrl: nonEmptyStringSchema,
+    metadata: z.record(z.string(), jsonValueSchema),
+    createdAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const recruiterPillTypeSchema = z.enum([
+  "accept_and_schedule",
+  "request_scope_and_comp",
+  "polite_pass",
+]);
+
+export const recruiterPillReplySchema = z
+  .object({
+    pillType: recruiterPillTypeSchema,
+    label: nonEmptyStringSchema,
+    subject: nonEmptyStringSchema,
+    bodyText: nonEmptyStringSchema,
+    bodyHtml: z.string().nullable(),
+    calendarSlotsInjected: z.array(nonEmptyStringSchema),
+    requiresApproval: z.boolean(),
+    contextSummary: nonEmptyStringSchema,
+  })
+  .strict();
+
+export const recruiterPillSetSchema = z
+  .object({
+    incomingMessageId: nonEmptyStringSchema,
+    senderName: nonEmptyStringSchema,
+    senderEmailOrHandle: nonEmptyStringSchema,
+    roleMentioned: nonEmptyStringSchema.nullable(),
+    companyMentioned: nonEmptyStringSchema.nullable(),
+    pills: z.array(recruiterPillReplySchema),
+    generatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const inboundMessageContextSchema = z
+  .object({
+    messageId: nonEmptyStringSchema.optional(),
+    senderName: nonEmptyStringSchema,
+    senderEmailOrHandle: nonEmptyStringSchema,
+    subject: nonEmptyStringSchema,
+    bodyText: nonEmptyStringSchema,
+    receivedAt: isoTimestampSchema.optional(),
+    channel: z.enum(["gmail", "linkedin"]).optional(),
+    companyMentioned: nonEmptyStringSchema.optional(),
+    roleMentioned: nonEmptyStringSchema.optional(),
+    salaryMentioned: nonEmptyStringSchema.optional(),
+    techStackMentioned: z.array(nonEmptyStringSchema).optional(),
+    calendarSlots: z.array(nonEmptyStringSchema).optional(),
+  })
+  .strict();
+
+// ===========================================================================
+// Milestone M4: Calendar & Availability Schemas
+// ===========================================================================
+
+export const calendarEventStatusSchema = z.enum([
+  "confirmed",
+  "tentative",
+  "cancelled",
+]);
+
+export const calendarTransparencySchema = z.enum(["opaque", "transparent"]);
+
+export const interviewRoundTypeSchema = z.enum([
+  "recruiter_screen",
+  "hiring_manager_screen",
+  "technical_deep_dive",
+  "system_design",
+  "coding_architecture",
+  "executive_culture",
+  "onsite_loop",
+  "offer_review",
+  "unknown",
+]);
+
+export const calendarEventSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    summary: nonEmptyStringSchema,
+    description: z.string().nullable(),
+    start: isoTimestampSchema,
+    end: isoTimestampSchema,
+    isAllDay: z.boolean(),
+    status: calendarEventStatusSchema,
+    transparency: calendarTransparencySchema,
+    location: z.string().nullable(),
+    meetingLink: z.string().nullable(),
+    attendees: z.array(nonEmptyStringSchema),
+    organizerEmail: z.string().nullable(),
+    isBusy: z.boolean().optional(),
+  })
+  .strict();
+
+export const timeSlotSchema = z
+  .object({
+    start: isoTimestampSchema,
+    end: isoTimestampSchema,
+    durationMinutes: z.number().int().positive(),
+    dayKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    formattedCt: nonEmptyStringSchema,
+  })
+  .strict();
+
+export const dailyAvailabilitySchema = z
+  .object({
+    dateStr: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    dayName: nonEmptyStringSchema,
+    slots30min: z.array(timeSlotSchema),
+    slots45min: z.array(timeSlotSchema),
+  })
+  .strict();
+
+// ===========================================================================
+// Milestone M4: Omnichannel Messaging Schemas
+// ===========================================================================
+
+export const messageChannelSchema = z.enum(["gmail", "linkedin", "dex"]);
+export const messageDirectionSchema = z.enum(["inbound", "outbound"]);
+export const messageStatusSchema = z.enum([
+  "draft",
+  "pending_approval",
+  "approved",
+  "queued",
+  "sending",
+  "sent",
+  "failed",
+  "cancelled",
+]);
+
+export const composeMessageInputSchema = z
+  .object({
+    recipientAddress: nonEmptyStringSchema,
+    subject: nonEmptyStringSchema,
+    bodyText: nonEmptyStringSchema,
+    bodyHtml: z.string().optional(),
+    channel: messageChannelSchema.optional(),
+    recipientName: nonEmptyStringSchema.optional(),
+    recipientId: nonEmptyStringSchema.optional(),
+    threadId: nonEmptyStringSchema.optional(),
+    inReplyTo: nonEmptyStringSchema.optional(),
+    references: nonEmptyStringSchema.optional(),
+    opportunityId: nonEmptyStringSchema.optional(),
+    relationshipId: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+
+export const outboxMessageSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    channel: messageChannelSchema,
+    direction: messageDirectionSchema,
+    recipientAddress: nonEmptyStringSchema,
+    recipientName: nonEmptyStringSchema.nullable(),
+    recipientId: nonEmptyStringSchema.nullable(),
+    subject: nonEmptyStringSchema,
+    bodyText: nonEmptyStringSchema,
+    bodyHtml: z.string().nullable(),
+    threadId: nonEmptyStringSchema.nullable(),
+    inReplyTo: nonEmptyStringSchema.nullable(),
+    references: nonEmptyStringSchema.nullable(),
+    status: messageStatusSchema,
+    messageCommitment: sha256DigestSchema.or(z.literal("")),
+    approvalId: nonEmptyStringSchema.nullable(),
+    sentEvidenceRef: nonEmptyStringSchema.nullable(),
+    externalMessageId: nonEmptyStringSchema.nullable(),
+    errorMessage: z.string().nullable(),
+    createdAt: isoTimestampSchema,
+    sentAt: isoTimestampSchema.nullable(),
+  })
+  .strict();
+
+export const messagePageSchema = z
+  .object({
+    items: z.array(outboxMessageSchema),
+    freshness: projectionFreshnessSchema.nullable(),
+    nextCursor: nonEmptyStringSchema.nullable(),
+  })
+  .strict();
+
+export const sendResultSchema = z
+  .object({
+    success: z.boolean(),
+    messageId: nonEmptyStringSchema,
+    channel: messageChannelSchema,
+    externalId: nonEmptyStringSchema.nullable(),
+    threadId: nonEmptyStringSchema.nullable(),
+    evidenceRef: nonEmptyStringSchema.nullable(),
+    error: z.string().nullable(),
+    sentAt: isoTimestampSchema,
+  })
+  .strict();
+
+// ===========================================================================
+// Milestone M4: Sovereign Voice & Interview Debrief Schemas
+// ===========================================================================
+
+export const speakerRoleSchema = z.enum([
+  "candidate",
+  "interviewer",
+  "recruiter",
+  "unknown",
+]);
+
+export const transcriptSegmentSchema = z
+  .object({
+    offsetMs: z.number().int().nonnegative(),
+    speaker: nonEmptyStringSchema,
+    role: speakerRoleSchema,
+    text: nonEmptyStringSchema,
+    confidence: z.number().min(0).max(1),
+  })
+  .strict();
+
+export const interviewMetadataSchema = z
+  .object({
+    company: nonEmptyStringSchema,
+    role: nonEmptyStringSchema,
+    roundType: nonEmptyStringSchema,
+    interviewDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+    interviewerNames: z.array(nonEmptyStringSchema),
+    interviewerTitles: z.array(nonEmptyStringSchema),
+    durationMinutes: z.number().int().positive(),
+    audioRef: nonEmptyStringSchema.nullable(),
+    opportunityId: nonEmptyStringSchema.nullable(),
+    contactIds: z.array(nonEmptyStringSchema),
+  })
+  .strict();
+
+export const questionAnswerPairSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    question: nonEmptyStringSchema,
+    askedBy: nonEmptyStringSchema,
+    category: nonEmptyStringSchema,
+    answerSummary: nonEmptyStringSchema,
+    keyPointsMentioned: z.array(nonEmptyStringSchema),
+    effectivenessScore: z.number().min(0).max(10),
+    followUpNeeded: z.boolean(),
+  })
+  .strict();
+
+export const fitAssessmentSchema = z
+  .object({
+    overallScore: z.number().min(0).max(100),
+    technicalAlignment: nonEmptyStringSchema,
+    leadershipAlignment: nonEmptyStringSchema,
+    compensationAlignment: nonEmptyStringSchema,
+    greenFlags: z.array(nonEmptyStringSchema),
+    redFlags: z.array(nonEmptyStringSchema),
+    cultureNotes: z.string(),
+    recommendation: nonEmptyStringSchema,
+  })
+  .strict();
+
+export const interviewActionItemSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    title: nonEmptyStringSchema,
+    actionType: nonEmptyStringSchema,
+    priority: z.enum(["p0", "p1", "p2", "P0", "P1", "P2"]),
+    dueDate: nonEmptyStringSchema,
+    recipientName: nonEmptyStringSchema.nullable(),
+    recipientEmail: z.string().nullable(),
+    draftContent: z.string().nullable(),
+    opportunityId: nonEmptyStringSchema.nullable(),
+    isCompleted: z.boolean(),
+  })
+  .strict();
+
+export const interviewDebriefSchema = z
+  .object({
+    id: nonEmptyStringSchema,
+    createdAt: isoTimestampSchema,
+    metadata: interviewMetadataSchema,
+    executiveSummary: nonEmptyStringSchema,
+    questionsAndAnswers: z.array(questionAnswerPairSchema),
+    fitAssessment: fitAssessmentSchema,
+    actionItems: z.array(interviewActionItemSchema),
+    rawTranscript: z.string(),
+    transcriptSegments: z.array(transcriptSegmentSchema),
+  })
+  .strict();
+
+export const interviewDebriefPageSchema = z
+  .object({
+    items: z.array(interviewDebriefSchema),
+    freshness: projectionFreshnessSchema.nullable(),
+    nextCursor: nonEmptyStringSchema.nullable(),
+  })
+  .strict();
+
+// ===========================================================================
+// Contract Handle Response
+// ===========================================================================
 
 const nonRefusedContractStatusSchema = z.enum([
   "accepted",
@@ -647,6 +1333,16 @@ const nonRefusedContractStatusSchema = z.enum([
   "revoked",
   "unverifiable",
 ]);
+
+const contractHandleWireShape = {
+  contract_id: nonEmptyStringSchema,
+  operation_id: nonEmptyStringSchema,
+  submitted_at: isoTimestampSchema,
+  correlation_id: nonEmptyStringSchema.optional(),
+  expires_at: isoTimestampSchema.nullable().optional(),
+  status_url: nonEmptyStringSchema.nullable().optional(),
+  events_url: nonEmptyStringSchema.nullable().optional(),
+};
 
 const refusedContractHandleSchema = z
   .object({
@@ -703,6 +1399,7 @@ export const contractHandleResponseSchema = z.union([
   nonRefusedContractHandleSchema,
 ]);
 
+// Inferred TypeScript types
 export type ContractStatus = z.infer<typeof contractStatusSchema>;
 export type ProjectionStatus = z.infer<typeof projectionStatusSchema>;
 export type OpportunityStatus = z.infer<typeof opportunityStatusSchema>;
@@ -721,6 +1418,9 @@ export type OpportunityCreateParameters = z.infer<
 export type OpportunityScoreParameters = z.infer<
   typeof opportunityScoreParametersSchema
 >;
+export type ApplicationCreateParameters = z.infer<
+  typeof applicationCreateParametersSchema
+>;
 export type ApplicationTransitionParameters = z.infer<
   typeof applicationTransitionParametersSchema
 >;
@@ -736,8 +1436,29 @@ export type OutreachApproveParameters = z.infer<
 export type OutreachSendParameters = z.infer<
   typeof outreachSendParametersSchema
 >;
+export type OutreachCancelParameters = z.infer<
+  typeof outreachCancelParametersSchema
+>;
 export type EvidenceExportParameters = z.infer<
   typeof evidenceExportParametersSchema
+>;
+export type LeadCreateParameters = z.infer<
+  typeof leadCreateParametersSchema
+>;
+export type LeadConvertParameters = z.infer<
+  typeof leadConvertParametersSchema
+>;
+export type OrganizationCreateParameters = z.infer<
+  typeof organizationCreateParametersSchema
+>;
+export type OrganizationUpdateParameters = z.infer<
+  typeof organizationUpdateParametersSchema
+>;
+export type WorkspaceInitializeParameters = z.infer<
+  typeof workspaceInitializeParametersSchema
+>;
+export type IntentSetParameters = z.infer<
+  typeof intentSetParametersSchema
 >;
 export type JobSearchCommand = z.infer<typeof jobSearchCommandSchema>;
 export type HealthStatus = z.infer<typeof healthStatusSchema>;
@@ -765,3 +1486,53 @@ export type ExecutionReceiptEvidence = z.infer<
   typeof executionReceiptEvidenceSchema
 >;
 export type ContractHandle = z.infer<typeof contractHandleResponseSchema>;
+
+// Milestone M4 Types
+export type SkillTier = z.infer<typeof skillTierSchema>;
+export type SkillCategory = z.infer<typeof skillCategorySchema>;
+export type SkillItem = z.infer<typeof skillItemSchema>;
+export type MLDepthSubdomain = z.infer<typeof mlDepthSubdomainSchema>;
+export type ProductionMLDepth = z.infer<typeof productionMLDepthSchema>;
+export type WorkExperienceItem = z.infer<typeof workExperienceItemSchema>;
+export type EducationItem = z.infer<typeof educationItemSchema>;
+export type ProjectHighlight = z.infer<typeof projectHighlightSchema>;
+export type TargetRoleConfig = z.infer<typeof targetRoleConfigSchema>;
+export type CompensationExpectations = z.infer<typeof compensationExpectationsSchema>;
+export type CandidateBio = z.infer<typeof candidateBioSchema>;
+export type CandidateProfile = z.infer<typeof candidateProfileSchema>;
+export type LeadStatus = z.infer<typeof leadStatusSchema>;
+export type Lead = z.infer<typeof leadSchema>;
+export type LeadPage = z.infer<typeof leadPageSchema>;
+export type Organization = z.infer<typeof organizationSchema>;
+export type OrganizationPage = z.infer<typeof organizationPageSchema>;
+export type CommunicationEntry = z.infer<typeof communicationEntrySchema>;
+export type Contact = z.infer<typeof contactSchema>;
+export type ContactPage = z.infer<typeof contactPageSchema>;
+export type ActionUrgency = z.infer<typeof actionUrgencySchema>;
+export type ActionType = z.infer<typeof actionTypeSchema>;
+export type NextBestAction = z.infer<typeof nextBestActionSchema>;
+export type RecruiterPillType = z.infer<typeof recruiterPillTypeSchema>;
+export type RecruiterPillReply = z.infer<typeof recruiterPillReplySchema>;
+export type RecruiterPillSet = z.infer<typeof recruiterPillSetSchema>;
+export type InboundMessageContext = z.infer<typeof inboundMessageContextSchema>;
+export type CalendarEventStatus = z.infer<typeof calendarEventStatusSchema>;
+export type CalendarTransparency = z.infer<typeof calendarTransparencySchema>;
+export type InterviewRoundType = z.infer<typeof interviewRoundTypeSchema>;
+export type CalendarEvent = z.infer<typeof calendarEventSchema>;
+export type TimeSlot = z.infer<typeof timeSlotSchema>;
+export type DailyAvailability = z.infer<typeof dailyAvailabilitySchema>;
+export type MessageChannel = z.infer<typeof messageChannelSchema>;
+export type MessageDirection = z.infer<typeof messageDirectionSchema>;
+export type MessageStatus = z.infer<typeof messageStatusSchema>;
+export type ComposeMessageInput = z.infer<typeof composeMessageInputSchema>;
+export type OutboxMessage = z.infer<typeof outboxMessageSchema>;
+export type MessagePage = z.infer<typeof messagePageSchema>;
+export type SendResult = z.infer<typeof sendResultSchema>;
+export type SpeakerRole = z.infer<typeof speakerRoleSchema>;
+export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
+export type InterviewMetadata = z.infer<typeof interviewMetadataSchema>;
+export type QuestionAnswerPair = z.infer<typeof questionAnswerPairSchema>;
+export type FitAssessment = z.infer<typeof fitAssessmentSchema>;
+export type InterviewActionItem = z.infer<typeof interviewActionItemSchema>;
+export type InterviewDebrief = z.infer<typeof interviewDebriefSchema>;
+export type InterviewDebriefPage = z.infer<typeof interviewDebriefPageSchema>;

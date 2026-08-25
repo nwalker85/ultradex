@@ -89,10 +89,10 @@ class DexClient:
                 id=data.get("id"),
                 name=self._get_full_name(data),
                 email=self._get_primary_email(data),
-                company=data.get("company_name"),
-                job_title=data.get("headline"),
+                company=data.get("company") or data.get("company_name"),
+                job_title=data.get("job_title") or data.get("headline"),
                 phone=self._get_primary_phone(data),
-                notes=data.get("notes"),
+                notes=data.get("notes") or data.get("description"),
             )
         except Exception as e:
             print(f"Error parsing contact {data.get('id')}: {e}")

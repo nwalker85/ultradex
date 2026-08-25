@@ -3,7 +3,18 @@
 from datetime import datetime, timezone
 
 from ravenhelm_contracts.jobsearch_v1 import JOBSEARCH_PROJECTION_TYPES_V1
-from sqlalchemy import BigInteger, Column, DateTime, Float, JSON, String
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+)
+from sqlalchemy.orm import relationship
 
 from .models import Base
 
@@ -14,9 +25,19 @@ JOBSEARCH_PROJECTION_TABLES: frozenset[str] = frozenset(
         "jobsearch_applications",
         "jobsearch_relationships",
         "jobsearch_outreach",
+        "jobsearch_intent",
         "jobsearch_projection_checkpoints",
+        "jobsearch_organizations",
+        "jobsearch_leads",
     }
 )
+
+# Fixed identifiers for the two workspace-scoped singleton rows (CCC Wave 2,
+# Lane F1). `intent.set` and `workspace.initialize` are replace-style: they
+# always mutate the one private-workspace row rather than taking an
+# identifier, per the ravenhelm-contracts jobsearch.v1 README.
+INTENT_SINGLETON_ID: str = "intent-workspace-01"
+WORKSPACE_SINGLETON_ID: str = "workspace-private"
 
 JOBSEARCH_COMMAND_TABLES: frozenset[str] = frozenset(
     {
@@ -125,6 +146,36 @@ class OutreachProjectionDB(Base):
     )
 
 
+class IntentProjectionDB(Base):
+    """The single workspace-scoped `JobSearchIntentV1` targeting record.
+
+    Replace-style singleton: exactly one row, keyed by `INTENT_SINGLETON_ID`,
+    always rewritten in place by `intent.set` rather than appended to.
+    """
+
+    __tablename__ = "jobsearch_intent"
+
+    id = Column(String(64), primary_key=True)
+    target_role_families = Column(JSON, nullable=False, default=list)
+    target_domains = Column(JSON, nullable=False, default=list)
+    seniority_band = Column(String(128), nullable=False)
+    location_preference = Column(String(255), nullable=True)
+    remote_preference = Column(String(32), nullable=False)
+    employer_exclusions = Column(JSON, nullable=False, default=list)
+    weights = Column(JSON, nullable=False)
+    narrative = Column(String(2000), nullable=True)
+    source_event_id = Column(String(128), nullable=False)
+    source_event_position = Column(String(128), nullable=False)
+    projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+    )
+
+
 class ProjectionCheckpointDB(Base):
     __tablename__ = "jobsearch_projection_checkpoints"
 
@@ -134,6 +185,104 @@ class ProjectionCheckpointDB(Base):
     projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     lag_ms = Column(BigInteger, nullable=False)
     status = Column(String(32), nullable=False, index=True)
+
+
+class OrganizationDB(Base):
+    """Employer organization directory aggregating contacts, leads, and pipeline pursuits."""
+
+    __tablename__ = "jobsearch_organizations"
+
+    id = Column(String(64), primary_key=True)
+    name = Column(String(255), nullable=False, index=True)
+    domain = Column(String(255), nullable=True, index=True)
+    industry = Column(String(128), nullable=True, index=True)
+    size = Column(String(64), nullable=True)
+    advocacy_rating = Column(Float, nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+
+    # Freshness and audit metadata
+    source_event_id = Column(String(128), nullable=False, default="pending")
+    source_event_position = Column(String(128), nullable=False, default="pending")
+    projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+    )
+
+    # ORM Relationships
+    leads = relationship(
+        "LeadDB",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        foreign_keys="LeadDB.organization_id",
+    )
+    contacts = relationship(
+        "ContactDB",
+        back_populates="organization",
+        foreign_keys="ContactDB.organization_id",
+    )
+
+
+class LeadDB(Base):
+    """Unapplied job posting with profile match breakdown, risk flags, and conversion tracking."""
+
+    __tablename__ = "jobsearch_leads"
+
+    id = Column(String(64), primary_key=True)
+    source_board = Column(String(64), nullable=False, index=True)
+    external_id = Column(String(255), nullable=True, index=True)
+    employer = Column(String(255), nullable=False, index=True)
+    organization_id = Column(
+        String(64),
+        ForeignKey("jobsearch_organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    title = Column(String(255), nullable=False, index=True)
+    location = Column(String(255), nullable=True)
+    remote_type = Column(String(32), nullable=False, default="unknown", index=True)
+    salary_min = Column(Integer, nullable=True)
+    salary_max = Column(Integer, nullable=True)
+    salary_currency = Column(String(8), nullable=False, default="USD")
+    url = Column(String(1024), nullable=True)
+    description = Column(Text, nullable=True)
+    requirements = Column(JSON, nullable=False, default=list)
+    fit_score = Column(Float, nullable=True, index=True)
+    match_breakdown = Column(JSON, nullable=False, default=dict)
+    risk_flags = Column(JSON, nullable=False, default=list)
+    state = Column(String(32), nullable=False, default="discovered", index=True)
+    converted_opportunity_id = Column(
+        String(64),
+        ForeignKey("jobsearch_opportunities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Freshness and audit metadata
+    source_event_id = Column(String(128), nullable=False, default="pending")
+    source_event_position = Column(String(128), nullable=False, default="pending")
+    projected_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+    )
+
+    # ORM Relationships
+    organization = relationship(
+        "OrganizationDB",
+        back_populates="leads",
+        foreign_keys=[organization_id],
+    )
+    converted_opportunity = relationship(
+        "OpportunityProjectionDB",
+        foreign_keys=[converted_opportunity_id],
+    )
 
 
 class JobSearchCommandDB(Base):

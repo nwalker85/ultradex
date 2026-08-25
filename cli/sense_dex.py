@@ -27,6 +27,44 @@ from core.models import ContactDB
 from core.jobsearch_sources import DexSweep, RedisSweepStash
 
 
+def _persist_local_snapshot(database_url: str, remote) -> int:
+    """Write canonical Dex fields locally so the next sweep is a real delta."""
+    database = Database(database_url)
+    database.init()
+    session = database.get_session()
+    try:
+        written = 0
+        for contact in remote:
+            data = contact.model_dump() if hasattr(contact, "model_dump") else dict(contact)
+            contact_id = str(data["id"])
+            row = session.get(ContactDB, contact_id)
+            if row is None:
+                session.add(
+                    ContactDB(
+                        id=contact_id,
+                        name=data.get("name") or "Unknown",
+                        email=data.get("email"),
+                        phone=data.get("phone"),
+                        company=data.get("company"),
+                        job_title=data.get("job_title"),
+                    )
+                )
+            else:
+                row.name = data.get("name") or row.name
+                row.email = data.get("email")
+                row.phone = data.get("phone")
+                if data.get("company") is not None:
+                    row.company = data.get("company")
+                if data.get("job_title") is not None:
+                    row.job_title = data.get("job_title")
+            written += 1
+        session.commit()
+        return written
+    finally:
+        session.close()
+        database.close()
+
+
 def _local_contacts(database_url: str) -> list[dict]:
     database = Database(database_url)
     database.init()
@@ -83,6 +121,8 @@ async def main() -> int:
         print("empty delta — nothing declared (use --deposit-empty to record quiet)")
         return 0
 
+    persisted = _persist_local_snapshot(database_url, remote)
+    print(f"persisted: {persisted} local contacts")
     print(f"declared: {declaration.source_ref}")
     print(f"          {declaration.commitment}")
     print(f"          {declaration.redacted_summary}")

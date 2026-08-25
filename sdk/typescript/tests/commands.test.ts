@@ -62,31 +62,47 @@ function createClient(transport: UltradexTransport): UltradexClient {
 }
 
 describe("closed governed job-search command catalog", () => {
-  it("publishes exactly the canonical nine command names and no raw escape hatch", () => {
+  it("publishes exactly the canonical command names and no raw escape hatch", () => {
     const client = createClient(new RecordingTransport([]));
 
     expect(JOB_SEARCH_COMMAND_NAMES).toEqual([
       "sources.ingest",
       "opportunities.create",
       "opportunities.score",
+      "applications.create",
       "applications.transition",
       "relationships.sync",
       "outreach.prepare",
       "outreach.approve",
       "outreach.send",
+      "outreach.cancel",
       "evidence.export",
+      "leads.create",
+      "leads.convert",
+      "organizations.create",
+      "organizations.update",
+      "workspace.initialize",
+      "intent.set",
     ]);
     expect(client).not.toHaveProperty("submitJobSearchCommand");
     expectTypeOf<JobSearchCommand["commandName"]>().toEqualTypeOf<
       | "sources.ingest"
       | "opportunities.create"
       | "opportunities.score"
+      | "applications.create"
       | "applications.transition"
       | "relationships.sync"
       | "outreach.prepare"
       | "outreach.approve"
       | "outreach.send"
+      | "outreach.cancel"
       | "evidence.export"
+      | "leads.create"
+      | "leads.convert"
+      | "organizations.create"
+      | "organizations.update"
+      | "workspace.initialize"
+      | "intent.set"
     >();
   });
 
@@ -508,4 +524,67 @@ describe("governed command outcomes", () => {
       await expect(pending).rejects.toBeInstanceOf(UltradexSchemaError);
     },
   );
+
+  it("submits leads and organizations CRM commands", async () => {
+    const transport = new RecordingTransport([
+      response(202, syntheticContractHandleResponse),
+      response(202, syntheticContractHandleResponse),
+      response(202, syntheticContractHandleResponse),
+      response(202, syntheticContractHandleResponse),
+    ]);
+    const client = createClient(transport);
+
+    const leadHandle = await client.submitLeadCreate(
+      {
+        employer: "Anthropic",
+        title: "Principal AI Architect",
+        fitScore: 94.5,
+      },
+      { idempotencyKey: "idempotency-lead-create" },
+    );
+    expect(leadHandle.status).toBe("accepted");
+
+    const convertHandle = await client.submitLeadConvert(
+      {
+        leadId: "lead-synthetic-001",
+        stage: "interviewing",
+      },
+      { idempotencyKey: "idempotency-lead-convert" },
+    );
+    expect(convertHandle.status).toBe("accepted");
+
+    const orgHandle = await client.submitOrganizationCreate(
+      {
+        name: "Anthropic",
+        industry: "AI Research",
+        advocacyRating: 95,
+      },
+      { idempotencyKey: "idempotency-org-create" },
+    );
+    expect(orgHandle.status).toBe("accepted");
+
+    const orgUpdateHandle = await client.submitOrganizationUpdate(
+      {
+        organizationId: "org-synthetic-anthropic",
+        notes: "Updated mission alignment notes.",
+      },
+      { idempotencyKey: "idempotency-org-update" },
+    );
+    expect(orgUpdateHandle.status).toBe("accepted");
+
+    expect(transport.requests).toHaveLength(4);
+    expect(transport.requests[0]?.url).toBe(
+      "https://ultradex.synthetic.example/api/v2/job-search/commands/leads.create",
+    );
+    expect(transport.requests[1]?.url).toBe(
+      "https://ultradex.synthetic.example/api/v2/job-search/commands/leads.convert",
+    );
+    expect(transport.requests[2]?.url).toBe(
+      "https://ultradex.synthetic.example/api/v2/job-search/commands/organizations.create",
+    );
+    expect(transport.requests[3]?.url).toBe(
+      "https://ultradex.synthetic.example/api/v2/job-search/commands/organizations.update",
+    );
+  });
 });
+

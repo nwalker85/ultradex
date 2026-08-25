@@ -11,7 +11,9 @@ from core.jobsearch_models import (
     JOBSEARCH_PROJECTION_TYPES,
     ApplicationProjectionDB,
     JobSearchCommandDB,
+    LeadDB,
     OpportunityProjectionDB,
+    OrganizationDB,
     OutreachProjectionDB,
     ProjectionCheckpointDB,
     RelationshipProjectionDB,
@@ -33,6 +35,8 @@ def _migrated_column(tmp_path, table_name, column_name):
         (RelationshipProjectionDB, "jobsearch_relationships"),
         (OutreachProjectionDB, "jobsearch_outreach"),
         (ProjectionCheckpointDB, "jobsearch_projection_checkpoints"),
+        (OrganizationDB, "jobsearch_organizations"),
+        (LeadDB, "jobsearch_leads"),
     ],
 )
 def test_source_event_position_uses_opaque_bounded_string(
@@ -136,8 +140,10 @@ def test_relationship_schema_contains_only_canonical_contract_fields(tmp_path):
 
 def test_projection_types_match_canonical_frozen_set():
     assert JOBSEARCH_PROJECTION_TYPES == JOBSEARCH_PROJECTION_TYPES_V1
+    # "intent" added at ravenhelm-contracts 0.5.0 for the Intent plane
+    # (CCC Wave 2 Lane F1); no ultradex projection table backs it yet.
     assert JOBSEARCH_PROJECTION_TYPES == frozenset(
-        {"opportunities", "applications", "relationships", "outreach"}
+        {"opportunities", "applications", "relationships", "outreach", "intent"}
     )
 
 
@@ -184,3 +190,49 @@ def test_database_init_uses_one_connection_for_in_memory_startup():
     assert {"operations", "contacts"} <= tables
     assert set(JOBSEARCH_PROJECTION_TABLES) <= tables
     assert set(JOBSEARCH_COMMAND_TABLES) <= tables
+
+
+def test_crm_migration_organizations_schema(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'organizations-schema.db'}")
+    run_jobsearch_migrations(str(engine.url))
+    columns = {col["name"]: col for col in inspect(engine).get_columns("jobsearch_organizations")}
+    assert "id" in columns
+    assert "name" in columns
+    assert "domain" in columns
+    assert "industry" in columns
+    assert "size" in columns
+    assert "advocacy_rating" in columns
+    assert "notes" in columns
+    assert columns["name"]["nullable"] is False
+
+
+def test_crm_migration_leads_schema(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'leads-schema.db'}")
+    run_jobsearch_migrations(str(engine.url))
+    columns = {col["name"]: col for col in inspect(engine).get_columns("jobsearch_leads")}
+    assert "id" in columns
+    assert "source_board" in columns
+    assert "external_id" in columns
+    assert "employer" in columns
+    assert "organization_id" in columns
+    assert "title" in columns
+    assert "remote_type" in columns
+    assert "fit_score" in columns
+    assert "match_breakdown" in columns
+    assert "risk_flags" in columns
+    assert "state" in columns
+    assert "converted_opportunity_id" in columns
+    assert columns["title"]["nullable"] is False
+    assert columns["employer"]["nullable"] is False
+
+
+def test_crm_migration_contacts_extensions(tmp_path):
+    database = Database(f"sqlite:///{tmp_path / 'contacts-ext.db'}")
+    database.init()
+    columns = {col["name"]: col for col in inspect(database.engine).get_columns("contacts")}
+    assert "advocacy_score" in columns
+    assert "organization_id" in columns
+    assert "crm_notes" in columns
+    assert "communication_history" in columns
+    assert "linkedin_url" in columns
+    assert "relationship_tier" in columns

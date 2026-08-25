@@ -19,10 +19,21 @@ from ravenhelm_contracts.accountability_v1 import hash_execution_receipt_v1
 from ravenhelm_contracts.jobsearch_v1 import COMMAND_NAMES_V1
 from sqlalchemy.orm import Session
 
+COMMAND_NAMES_CRM: frozenset[str] = COMMAND_NAMES_V1 | frozenset(
+    {
+        "leads.create",
+        "leads.convert",
+        "organizations.create",
+        "organizations.update",
+    }
+)
+
 from .delegation_service import DelegationService
 from .event_producer import EventProducer
 from .idempotency_service import IdempotencyService
 from .jobsearch_models import (
+    INTENT_SINGLETON_ID,
+    WORKSPACE_SINGLETON_ID,
     JobSearchCommandDB,
     JobSearchExecutionReceiptDB,
     JobSearchLifecycleEventDB,
@@ -109,12 +120,15 @@ def _handle(
 
 def _entity_for(command: JobSearchCommandV1) -> tuple[str, str]:
     bindings = {
+        "workspace.initialize": ("workspace", WORKSPACE_SINGLETON_ID),
+        "intent.set": ("intent", INTENT_SINGLETON_ID),
         "sources.ingest": ("evidence", None),
         "opportunities.create": ("opportunity", None),
         "opportunities.score": (
             "opportunity",
             command.parameters.get("opportunity_id"),
         ),
+        "applications.create": ("application", None),
         "applications.transition": (
             "application",
             command.parameters.get("application_id"),
@@ -129,7 +143,18 @@ def _entity_for(command: JobSearchCommandV1) -> tuple[str, str]:
             "outreach",
             command.parameters.get("outreach_id"),
         ),
+        "outreach.cancel": (
+            "outreach",
+            command.parameters.get("outreach_id"),
+        ),
         "evidence.export": ("evidence", None),
+        "leads.create": ("lead", None),
+        "leads.convert": ("lead", command.parameters.get("lead_id")),
+        "organizations.create": ("organization", None),
+        "organizations.update": (
+            "organization",
+            command.parameters.get("organization_id"),
+        ),
     }
     entity_type, supplied = bindings[command.command]
     if isinstance(supplied, str) and supplied.startswith(f"{entity_type}-"):
@@ -214,7 +239,7 @@ class JobSearchGatewayService:
         request: JobSearchCommandRequest,
         operation_id: str,
     ) -> JobSearchCommandV1:
-        if request.command not in COMMAND_NAMES_V1:
+        if request.command not in COMMAND_NAMES_CRM:
             raise ValueError("command is not a canonical job-search command")
         request_id = f"request-{uuid.uuid4()}"
         context = CorrelationContextV1.from_dict(

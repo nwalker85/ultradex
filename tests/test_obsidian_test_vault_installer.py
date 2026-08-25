@@ -18,6 +18,20 @@ PLUGINS = OBSIDIAN / "plugins"
 DESTINATION = PLUGINS / "ultradex-operator"
 PLUGIN_SOURCE = REPOSITORY / "integrations" / "obsidian-ultradex"
 BUILT_FILES = ("main.js", "manifest.json", "styles.css")
+
+# The Obsidian operator is frozen and unowned (ADR-014 amendment, 2026-08-05);
+# Career Director glass is apps/web. CI no longer builds it, so its build
+# artifacts are absent there and the installer correctly refuses. These tests
+# still earn their keep on a developer machine that has the artifacts, so skip
+# rather than delete: a frozen component must not gate a merge, but the
+# installer's path-confinement and symlink refusals are worth keeping runnable.
+pytestmark = pytest.mark.skipif(
+    not all((PLUGIN_SOURCE / name).exists() for name in BUILT_FILES),
+    reason=(
+        "obsidian-ultradex is frozen (see integrations/obsidian-ultradex/"
+        "DEPRECATED.md) and its build artifacts are absent"
+    ),
+)
 FIXED_VAULT_LITERAL = (
     "/Users/nate/var/obsidian-test-vaults/ultradex-operator"
 )

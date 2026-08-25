@@ -195,6 +195,27 @@
   font-size: var(--rh-typography-size-body-small);
 }
 
+a {
+  color: var(--rh-accent);
+  text-decoration: none;
+  transition: color var(--rh-motion-duration-fast) var(--rh-motion-easing-standard);
+}
+
+a:visited {
+  color: var(--rh-accent);
+}
+
+a:hover,
+a:focus-visible {
+  color: #b3d4f5;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+a:active {
+  color: var(--rh-primitive-accent-600);
+}
+
 .rh-table {
   border-collapse: collapse;
   width: 100%;
@@ -205,16 +226,24 @@
   border-bottom: 1px solid var(--rh-hairline);
   padding: 0.65rem 0.5rem;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
-.rh-table th {
+.rh-table thead th {
   color: var(--rh-muted);
   font-family: var(--rh-mono);
   font-size: 0.72rem;
   font-weight: var(--rh-typography-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.rh-table tbody th {
+  color: var(--rh-ink);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: normal;
+  text-transform: none;
 }
 
 .rh-table code {

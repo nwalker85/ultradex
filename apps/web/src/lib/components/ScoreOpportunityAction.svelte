@@ -13,10 +13,10 @@
   import OperationTracker from "./OperationTracker.svelte";
 
   /**
-   * `opportunities.score` (FR-OPP-7). Refuses today with `scorer_unbound` —
-   * <OperationTracker> renders that as a legible, warning-toned refusal
-   * with canned copy (FR-OPS-5), not a generic error. `lens` stays free
-   * text per PRD section 11.5 (no enum exists yet).
+   * `opportunities.score` (FR-OPP-7). The jobsearch worker binds
+   * DeterministicIntentScorer; a refusal here is a real domain refusal,
+   * not the old unbound-adapter default. `lens` stays free text per PRD
+   * section 11.5 (no enum exists yet).
    */
   let {
     client,
