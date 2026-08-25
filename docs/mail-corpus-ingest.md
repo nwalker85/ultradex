@@ -38,10 +38,47 @@ ClickHouse has **no credential default**:
 | `MAIL_CLICKHOUSE_TIMEOUT` | `60` | seconds |
 
 The user is required and undefaulted **on purpose**. The `default` user on vakr
-reaches every database on the host, including `forensics`. Open item 1 in the
-design ("a dedicated `mail` user with grants scoped to that database is the
-minimum") is not closed, so the code refuses to guess. Credentials travel as
-`X-ClickHouse-User` / `X-ClickHouse-Key` headers, never in the URL.
+reaches every database on the host, including `forensics` and `heimdall`, so the
+code refuses to guess. Credentials travel as `X-ClickHouse-User` /
+`X-ClickHouse-Key` headers, never in the URL.
+
+The intended user is `gmailnwalker85`, scoped to the `gmailnwalker85` database
+only. Its password lives in 1Password as **`ClickHouse gmailnwalker85 - Vakr`**.
+
+**The user does not exist yet — see "Blocked" below.**
+
+### One database per mail account
+
+`gmailnwalker85` is `<provider><account>`. There are other addresses and other
+providers, and they do not share a corpus: each gets its own database and its
+own scoped user, so a credential leak is bounded to one mailbox.
+
+The name is deliberately `[A-Za-z0-9_]`. A hyphen (`gmail-nwalker85`) is legal
+but is a syntax error unquoted, so every hand-written query and script would
+need backticks forever.
+
+## Embeddings
+
+The **audio-app pattern**, deliberately: odin llama-swap, OpenAI-compatible
+`/v1/embeddings`, reached over internal DNS rather than a tailnet IP.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `EMBED_API_URL` | `http://odin.ravenmask.net:18090` | llama-swap |
+| `EMBED_MODEL` | `nomic-embed-text` | 768 dimensions, L2-normalised |
+| `EMBED_MAX_WINDOW_CHARS` | `1400` | ~370 tokens against a 512-token batch cap |
+| `EMBED_WINDOW_OVERLAP` | `150` | |
+
+Only `subject` and `body` chunks are embedded. Everything else — greetings,
+signatures, quoted replies, disclaimers, autoreplies, tracking cruft — is stored
+in full fidelity and never embedded. That separation is the entire reason raw
+and chunked are defined at ingest.
+
+Longer text is windowed and mean-pooled. If the service rejects a window as too
+large anyway, it is split adaptively and pooled, down to a 200-char floor; only
+*size* errors trigger that path, because pooling around a **down** service would
+quietly poison the corpus. `--max-body-chars` is sized to the embedder's window
+for the same reason: a chunk that needs pooling is a blurrier vector.
 
 ## Running it
 
@@ -112,8 +149,10 @@ LinkedIn digests with a name swapped share one `template_id`. Instances keep
 their own rows; `core.mail_corpus.embeddable_exemplars` picks one exemplar per
 `(part, template_id)` for the embedding stage.
 
-`--max-body-chars` (default 2000) splits long body spans on paragraph
+`--max-body-chars` (default 1400) splits long body spans on paragraph
 boundaries. A chunk is an embedding unit; a 40 KB newsletter body is not one.
+The default tracks `core.mail_embed.DEFAULT_MAX_WINDOW_CHARS` so chunks fit one
+embedding request without pooling.
 
 ## Not built here
 

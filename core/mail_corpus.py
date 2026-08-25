@@ -47,7 +47,15 @@ EMBEDDABLE_PARTS: frozenset[str] = frozenset({PART_SUBJECT, PART_BODY})
 
 #: Body spans longer than this are split on paragraph boundaries. A chunk is an
 #: embedding unit; a 40 KB newsletter body is not one.
-DEFAULT_MAX_BODY_CHARS = 2000
+#:
+#: Sized to the *embedder's* window, not to taste: the deployed nomic-embed-text
+#: on odin llama-swap caps each request at a fixed token batch (observed 512),
+#: and ~1400 chars is ~370 tokens with headroom for token-dense prose. See
+#: ``core.mail_embed.DEFAULT_MAX_WINDOW_CHARS``, which audio-app arrived at the
+#: hard way. Oversized chunks still embed — the embedder splits and mean-pools
+#: rather than failing — but a pooled vector is a blurrier vector, so the
+#: chunker should hand it units that already fit.
+DEFAULT_MAX_BODY_CHARS = 1400
 
 # --- boundary heuristics ----------------------------------------------------
 _QUOTE_CHAR_RE = re.compile(r"^\s*>")
