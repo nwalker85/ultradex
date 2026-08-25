@@ -40,3 +40,144 @@ jobs:
               exit 1
               ;;
           esac
+
+  # ------------------------------------------------------------------ #
+  # Every pull request must name a Linear issue.
+  #
+  # WHY: Linear generates release notes from its own issues but cannot see
+  # Forgejo commits — its GitHub/GitLab integrations do the issue<->commit
+  # linking and neither speaks Forgejo. The id on the PR is the only link.
+  #
+  # This is the gate of record. A Claude Code hook checks the same rule at
+  # PR-creation time for faster feedback, but that hook binds one harness;
+  # Codex, Gemini, Cursor and a hand-run curl do not read it. Only this job
+  # sees every pull request.
+  #
+  # Deliberately a SEPARATE job from `policy`: `forgejo-policy / policy` is
+  # already a required check, so a new failing step inside it would wedge
+  # every merge on day one. Land this green first, then add
+  # `forgejo-policy / linear-ref (pull_request)` to status_check_contexts.
+  #
+  # Note: github.head_ref is EMPTY in Forgejo. Use pull_request.head.ref.
+  # ------------------------------------------------------------------ #
+  linear-ref:
+    runs-on: docker
+    steps:
+      - name: Pull request names a Linear issue
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          TITLE="${PR_TITLE:-}"
+          REF="${HEAD_REF:-}"
+          echo "title : $TITLE"
+          echo "branch: $REF"
+
+          # Explicit, visible opt-out. A silent skip would rot unnoticed.
+          if printf '%s' "$TITLE" | grep -qi 'NO-TICKET'; then
+            echo "NO-TICKET in the title — skipping, and the gap is on the record."
+            exit 0
+          fi
+
+          # Identifier-shaped tokens. Linear's generated branch names are
+          # lowercase (nwalker85/rav-1452-...), so match case-insensitively.
+          # Filter tokens that are shaped like ids but never are.
+          IDS=$(printf '%s\n%s\n' "$TITLE" "$REF" \
+                | grep -oiE '\b[a-z]{2,6}-[0-9]{1,6}\b' \
+                | tr '[:lower:]' '[:upper:]' \
+                | grep -vE '^(UTF|SHA|RFC|ISO|AES|RSA|MD|CVE|PEP|HTTP|IPV|X|EC|TLS|SSL|JSON|YAML|BASE|CRC|GPT)-' \
+                | sort -u || true)
+
+          if [ -z "$IDS" ]; then
+            echo
+            echo "FAIL — no Linear issue id in the title or branch name."
+            echo
+            echo "Linear cannot see Forgejo commits, so the id on this PR is the"
+            echo "only thing that lets a release cite this work. Without it the"
+            echo "change ships unattributed."
+            echo
+            echo "Fix: use Linear's own branch name (issue -> Copy git branch name),"
+            echo "     e.g. nwalker85/rav-1452-link-forgejo-pull-requests-to-linear"
+            echo "  or put the id in the title: \"RAV-1452: <what it does>\""
+            echo
+            echo "No issue for this change? Put NO-TICKET in the PR title."
+            exit 1
+          fi
+
+          echo "candidates: $(echo "$IDS" | tr '\n' ' ')"
+
+          if [ -z "${LINEAR_API_KEY:-}" ]; then
+            echo "FAIL — LINEAR_API_KEY is not set, so the id cannot be validated."
+            echo "Set it as a user-level Actions secret so every repo inherits it."
+            exit 1
+          fi
+
+          # Validate against Linear. A regex-only gate would pass RAV-000, and
+          # release notes citing an issue nobody can open are worse than none.
+          #
+          # "The issue does not exist" and "Linear did not answer" are DIFFERENT
+          # facts and must not be conflated. Linear distinguishes them:
+          #   absent  -> errors[].extensions.code == INPUT_ERROR (400),
+          #              message "Entity not found: Issue"
+          #   no answer-> AUTHENTICATION_ERROR (401), rate limits, 5xx, timeouts
+          # A plain `grep -q '"identifier"'` treats both as absent, which failed
+          # this job on nate/rick-flag with a byte-identical block that passed
+          # everywhere else, then passed on re-run with no change (2026-08-25).
+          # Once this becomes a required check that behaviour turns Linear's
+          # uptime into a fleet-wide merge dependency.
+          #
+          # 0 = exists, 1 = definitively absent, 2 = could not verify
+          verify_id() {
+            local id="$1" body resp
+            body=$(printf '{"query":"{ issue(id:\\"%s\\") { identifier } }"}' "$id")
+            for attempt in 1 2 3; do
+              resp=$(curl -sS --max-time 15 -X POST https://api.linear.app/graphql \
+                       -H "Authorization: ${LINEAR_API_KEY}" \
+                       -H 'Content-Type: application/json' \
+                       -d "$body" 2>/dev/null || true)
+              if printf '%s' "$resp" | grep -q '"identifier"'; then
+                return 0
+              fi
+              if printf '%s' "$resp" | grep -qE '"code":"(INPUT_ERROR|NOT_FOUND)"|Entity not found'; then
+                return 1
+              fi
+              echo "  $id: no usable answer (attempt $attempt/3), retrying"
+              sleep $((attempt * 3))
+            done
+            return 2
+          }
+
+          UNVERIFIED=0
+          for ID in $IDS; do
+            set +e
+            verify_id "$ID"
+            RC=$?
+            set -e
+            case "$RC" in
+              0) echo "OK — $ID resolves in Linear."; exit 0 ;;
+              1) echo "  $ID: Linear says this issue does not exist." ;;
+              *) echo "  $ID: could not be verified."; UNVERIFIED=1 ;;
+            esac
+          done
+
+          if [ "$UNVERIFIED" = "1" ]; then
+            # Our infrastructure failed, not the author's PR. The id is present
+            # and correctly shaped; blocking the merge would punish a developer
+            # for an outage we own. Loud, not silent — and not a pass claiming
+            # the id was validated.
+            echo
+            echo "WARNING — could not reach Linear to validate: $(echo "$IDS" | tr '\n' ' ')"
+            echo "The id is present and correctly shaped, so this is NOT treated"
+            echo "as a missing reference. It is also NOT a confirmation that the"
+            echo "issue exists. Re-run this job once Linear is reachable."
+            exit 0
+          fi
+
+          echo
+          echo "FAIL — none of these resolve to a Linear issue: $(echo "$IDS" | tr '\n' ' ')"
+          echo "A fabricated id is worse than none: the PR looks linked and the"
+          echo "error surfaces at release time instead of now."
+          exit 1
