@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 from datetime import datetime, timezone
 from typing import Any, List, Optional
@@ -79,6 +78,19 @@ class DexClient:
         """Fetch raw Dex contact payload (LinkedIn message metadata lives here)."""
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.get(
+                f"{self.base_url}/contacts/{contact_id}",
+                headers=self.headers,
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            payload = response.json().get("data")
+            return payload if isinstance(payload, dict) else None
+
+    def fetch_contact_raw_sync(self, contact_id: str) -> dict[str, Any] | None:
+        """Sync Dex contact fetch for use inside FastAPI/GraphQL sync resolvers."""
+        with httpx.Client(timeout=30) as client:
+            response = client.get(
                 f"{self.base_url}/contacts/{contact_id}",
                 headers=self.headers,
             )
@@ -249,7 +261,7 @@ def enrich_contact_from_dex(db: Session, contact_id: str) -> ContactDB | None:
     if not api_key:
         return row
 
-    dex_data = asyncio.run(DexClient(api_key).fetch_contact_raw(contact_id))
+    dex_data = DexClient(api_key).fetch_contact_raw_sync(contact_id)
     if not dex_data:
         return row
 
