@@ -14,6 +14,7 @@
   import {
     buildRelationshipDisplay,
     dexRefToContactId,
+    dedupeRelationshipDisplaysByContact,
     filterRelationshipDisplays,
     relevanceScoreTone,
     relationshipsEmptyState,
@@ -34,13 +35,15 @@
 
   const tokenMissing = $derived(operatorAuthMissing(config));
   const displays = $derived(
-    relationships.map((relationship) =>
-      buildRelationshipDisplay(
-        relationship,
-        contactsById.get(dexRefToContactId(relationship.dexContactRef)) ?? null,
-        findOpportunityById(
-          [...opportunitiesById.values()],
-          relationship.opportunityId,
+    dedupeRelationshipDisplaysByContact(
+      relationships.map((relationship) =>
+        buildRelationshipDisplay(
+          relationship,
+          contactsById.get(dexRefToContactId(relationship.dexContactRef)) ?? null,
+          findOpportunityById(
+            [...opportunitiesById.values()],
+            relationship.opportunityId,
+          ),
         ),
       ),
     ),

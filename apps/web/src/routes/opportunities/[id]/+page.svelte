@@ -19,6 +19,7 @@
   import FreshnessTag from "$lib/components/FreshnessTag.svelte";
   import ScoreOpportunityAction from "$lib/components/ScoreOpportunityAction.svelte";
   import SyncRelationshipAction from "$lib/components/SyncRelationshipAction.svelte";
+  import EntityNotes from "$lib/components/EntityNotes.svelte";
   import TokenRequiredNotice from "$lib/components/TokenRequiredNotice.svelte";
 
   const opportunityId = $derived(page.params.id ?? "");
@@ -184,6 +185,12 @@
         <SyncRelationshipAction {client} opportunityId={opportunity.opportunityId} />
       </Panel>
     {/if}
+
+    <EntityNotes
+      {config}
+      entityType="opportunity"
+      entityId={opportunity.opportunityId}
+    />
   {/if}
 </div>
 

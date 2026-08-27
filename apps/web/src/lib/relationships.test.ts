@@ -3,6 +3,7 @@ import type { Contact, Relationship } from "@ultradex/sdk";
 
 import {
   buildRelationshipDisplay,
+  dedupeRelationshipDisplaysByContact,
   dexRefToContactId,
   filterRelationshipDisplays,
   filterRelationships,
@@ -104,6 +105,16 @@ describe("relationships helper module", () => {
     const sarah = filterRelationships(sampleRelationships, "Sarah");
     expect(sarah).toHaveLength(1);
     expect(sarah[0]?.relationshipId).toBe("rel-1");
+  });
+
+  it("dedupes rows by contact keeping highest relevance score", () => {
+    const dupes = [
+      buildRelationshipDisplay({ ...sampleRelationships[0]!, relationshipId: "rel-a", relevanceScore: 60 }, sarahContact, null),
+      buildRelationshipDisplay({ ...sampleRelationships[0]!, relationshipId: "rel-b", relevanceScore: 90 }, sarahContact, null),
+    ];
+    const deduped = dedupeRelationshipDisplaysByContact(dupes);
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0]?.relationship.relationshipId).toBe("rel-b");
   });
 
   it("generates correct empty states", () => {

@@ -107,6 +107,7 @@ app.add_middleware(
 
 # Import routes
 from .routes import contacts, analysis, health, operations, profile
+from .routes import entity_notes
 from .routes.v2 import (
     commands,
     delegations,
@@ -160,6 +161,11 @@ app.include_router(
     prefix="/api/v2",
     tags=["delegations"],
     dependencies=[Depends(require_delegation_admin_principal)],
+)
+app.include_router(
+    entity_notes.router,
+    prefix="/api/v2",
+    tags=["entity-notes"],
 )
 app.include_router(health.router, tags=["health"])
 app.include_router(

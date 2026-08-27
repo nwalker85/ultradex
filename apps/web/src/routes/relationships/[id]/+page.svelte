@@ -23,6 +23,7 @@
   import EmptyState from "$lib/components/EmptyState.svelte";
   import ErrorBanner from "$lib/components/ErrorBanner.svelte";
   import FreshnessTag from "$lib/components/FreshnessTag.svelte";
+  import EntityNotes from "$lib/components/EntityNotes.svelte";
   import TokenRequiredNotice from "$lib/components/TokenRequiredNotice.svelte";
 
   const relationshipId = $derived(page.params.id ?? "");
@@ -130,7 +131,7 @@
               <div><dt>Advocacy</dt><dd>{Math.round(contact.advocacyScore)}</dd></div>
             {/if}
             {#if contact.notes}
-              <div><dt>Notes</dt><dd>{contact.notes}</dd></div>
+              <div><dt>Legacy notes</dt><dd>{contact.notes}</dd></div>
             {/if}
           </dl>
         {:else}
@@ -173,6 +174,20 @@
         </dl>
       </Panel>
     </div>
+    <EntityNotes
+      {config}
+      entityType="relationship"
+      entityId={relationship.relationshipId}
+    />
+    {#if contact}
+      <EntityNotes
+        {config}
+        entityType="contact"
+        entityId={contact.id}
+        title="Contact notes"
+      />
+    {/if}
+
   {/if}
 </div>
 

@@ -49,7 +49,30 @@ JOBSEARCH_COMMAND_TABLES: frozenset[str] = frozenset(
     }
 )
 
+JOBSEARCH_ANNOTATION_TABLES: frozenset[str] = frozenset(
+    {
+        "jobsearch_entity_notes",
+    }
+)
+
+JOBSEARCH_VERSIONED_TABLES: frozenset[str] = (
+    JOBSEARCH_PROJECTION_TABLES
+    | JOBSEARCH_COMMAND_TABLES
+    | JOBSEARCH_ANNOTATION_TABLES
+)
+
 JOBSEARCH_PROJECTION_TYPES: frozenset[str] = JOBSEARCH_PROJECTION_TYPES_V1
+
+ENTITY_NOTE_TYPES: frozenset[str] = frozenset(
+    {
+        "contact",
+        "organization",
+        "relationship",
+        "opportunity",
+        "application",
+        "lead",
+    }
+)
 
 
 def _utcnow() -> datetime:
@@ -359,3 +382,25 @@ class JobSearchExecutionReceiptDB(Base):
     receipt_hash = Column(String(71), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     completed_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class EntityNoteDB(Base):
+    """Operator-authored note attached to a CRM entity."""
+
+    __tablename__ = "jobsearch_entity_notes"
+
+    id = Column(String(64), primary_key=True)
+    entity_type = Column(String(32), nullable=False, index=True)
+    entity_id = Column(String(64), nullable=False, index=True)
+    submitted_by = Column(String(255), nullable=False)
+    category = Column(String(128), nullable=True)
+    disposition = Column(String(128), nullable=True)
+    assigned_to = Column(String(255), nullable=True)
+    comment = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+    )

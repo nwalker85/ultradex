@@ -88,6 +88,27 @@ export function relevanceScoreTone(
   return "neutral";
 }
 
+
+export function dedupeRelationshipDisplaysByContact(
+  rows: readonly RelationshipDisplay[],
+): RelationshipDisplay[] {
+  const best = new Map<string, RelationshipDisplay>();
+  for (const row of rows) {
+    const key = row.relationship.dexContactRef;
+    const existing = best.get(key);
+    if (existing === undefined) {
+      best.set(key, row);
+      continue;
+    }
+    const rowScore = row.relationship.relevanceScore ?? -1;
+    const existingScore = existing.relationship.relevanceScore ?? -1;
+    if (rowScore > existingScore) {
+      best.set(key, row);
+    }
+  }
+  return [...best.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function filterRelationshipDisplays(
   rows: readonly RelationshipDisplay[],
   query: string,

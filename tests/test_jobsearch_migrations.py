@@ -8,6 +8,7 @@ from core.jobsearch_migrations import alembic_config, run_jobsearch_migrations
 from core.jobsearch_models import (
     JOBSEARCH_COMMAND_TABLES,
     JOBSEARCH_PROJECTION_TABLES,
+    JOBSEARCH_VERSIONED_TABLES,
     JOBSEARCH_PROJECTION_TYPES,
     ApplicationProjectionDB,
     JobSearchCommandDB,
@@ -153,8 +154,7 @@ def test_upgrade_head_creates_only_versioned_jobsearch_schema(tmp_path):
     tables = set(inspect(engine).get_table_names())
     assert tables == (
         {"alembic_version"}
-        | set(JOBSEARCH_PROJECTION_TABLES)
-        | set(JOBSEARCH_COMMAND_TABLES)
+        | set(JOBSEARCH_VERSIONED_TABLES)
     )
 
 
@@ -166,7 +166,7 @@ def test_upgrade_is_idempotent_and_downgrade_removes_jobsearch_tables(tmp_path):
     command.downgrade(cfg, "base")
     assert not (
         set(inspect(engine).get_table_names())
-        & (set(JOBSEARCH_PROJECTION_TABLES) | set(JOBSEARCH_COMMAND_TABLES))
+        & set(JOBSEARCH_VERSIONED_TABLES)
     )
 
 
