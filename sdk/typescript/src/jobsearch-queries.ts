@@ -38,6 +38,7 @@ export interface OpportunityListInput {
   readonly first?: number;
   readonly after?: string;
   readonly status?: z.infer<typeof opportunityStatusSchema>;
+  readonly organizationId?: string;
 }
 
 export interface ApplicationListInput {
@@ -130,6 +131,7 @@ const opportunityListInputSchema = z
     first: firstSchema.optional(),
     after: cursorSchema.optional(),
     status: opportunityStatusSchema.optional(),
+    organizationId: cursorSchema.optional(),
   })
   .strict();
 
@@ -237,6 +239,7 @@ export function opportunityVariables(
     first: value.first ?? 25,
     after: value.after,
     status: value.status,
+    organizationId: value.organizationId,
   });
 }
 
@@ -411,7 +414,7 @@ export function exactIdVariables(
 }
 
 export const LIST_OPPORTUNITIES_QUERY =
-  "query ListOpportunities($first: Int!, $after: String, $status: String) { opportunities(first: $first, after: $after, status: $status) { items { opportunityId employer title location roleFamily status fitScore fitExplanation riskFlags evidenceRefs { evidenceId sourceKind sourceRef classification observedAt commitment redactedSummary } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
+  "query ListOpportunities($first: Int!, $after: String, $status: String, $organizationId: String) { opportunities(first: $first, after: $after, status: $status, organizationId: $organizationId) { items { opportunityId organizationId employer title location roleFamily status fitScore fitExplanation riskFlags evidenceRefs { evidenceId sourceKind sourceRef classification observedAt commitment redactedSummary } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
 
 export const LIST_APPLICATIONS_QUERY =
   "query ListApplications($first: Int!, $after: String, $status: String, $opportunityId: String) { applications(first: $first, after: $after, status: $status, opportunityId: $opportunityId) { items { applicationId opportunityId status stageHistory { status occurredAt evidenceRef } artifactRefs nextAction nextActionAt freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
@@ -423,7 +426,7 @@ export const GET_RELATIONSHIP_QUERY =
   "query GetRelationship($id: String!) { relationship(id: $id) { relationshipId opportunityId dexContactRef relevanceScore relevanceSummary freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } }";
 
 export const GET_OPPORTUNITY_QUERY =
-  "query GetOpportunity($id: String!) { opportunity(id: $id) { opportunityId employer title location roleFamily status fitScore fitExplanation riskFlags evidenceRefs { evidenceId sourceKind sourceRef classification observedAt commitment redactedSummary } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } }";
+  "query GetOpportunity($id: String!) { opportunity(id: $id) { opportunityId organizationId employer title location roleFamily status fitScore fitExplanation riskFlags evidenceRefs { evidenceId sourceKind sourceRef classification observedAt commitment redactedSummary } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } }";
 
 export const LIST_OUTREACH_QUERY =
   "query ListOutreach($first: Int!, $after: String, $status: String, $opportunityId: String) { outreach(first: $first, after: $after, status: $status, opportunityId: $opportunityId) { items { outreachId opportunityId relationshipId status channel messageCommitment approvalContractId sentEvidenceRef freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";

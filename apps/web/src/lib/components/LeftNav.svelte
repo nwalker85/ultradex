@@ -70,6 +70,30 @@
     </a>
 
     <a
+      href="/organizations"
+      class="ccc-leftnav__item"
+      class:ccc-leftnav__item--active={isActive("/organizations")}
+      aria-current={isActive("/organizations") ? "page" : undefined}
+    >
+      <svg
+        class="ccc-leftnav__icon"
+        viewBox="0 0 20 20"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4 8.5 10 4l6 4.5V16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z" />
+        <path d="M8 17v-5h4v5" />
+      </svg>
+      <span>Organizations</span>
+    </a>
+
+    <a
       href="/applications"
       class="ccc-leftnav__item"
       class:ccc-leftnav__item--active={isActive("/applications")}

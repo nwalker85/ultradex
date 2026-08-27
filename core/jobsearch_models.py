@@ -83,6 +83,12 @@ class OpportunityProjectionDB(Base):
     __tablename__ = "jobsearch_opportunities"
 
     id = Column(String(64), primary_key=True)
+    organization_id = Column(
+        String(64),
+        ForeignKey("jobsearch_organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     employer_name = Column(String(255), nullable=False)
     title = Column(String(255), nullable=False)
     location = Column(String(255), nullable=True)
@@ -101,6 +107,12 @@ class OpportunityProjectionDB(Base):
         nullable=False,
         default=_utcnow,
         onupdate=_utcnow,
+    )
+
+    organization = relationship(
+        "OrganizationDB",
+        back_populates="opportunities",
+        foreign_keys=[organization_id],
     )
 
 
@@ -246,6 +258,11 @@ class OrganizationDB(Base):
         "ContactDB",
         back_populates="organization",
         foreign_keys="ContactDB.organization_id",
+    )
+    opportunities = relationship(
+        "OpportunityProjectionDB",
+        back_populates="organization",
+        foreign_keys="OpportunityProjectionDB.organization_id",
     )
 
 

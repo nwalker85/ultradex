@@ -236,3 +236,12 @@ def test_crm_migration_contacts_extensions(tmp_path):
     assert "communication_history" in columns
     assert "linkedin_url" in columns
     assert "relationship_tier" in columns
+
+
+def test_opportunity_organization_schema(tmp_path):
+    column = _migrated_column(
+        tmp_path,
+        "jobsearch_opportunities",
+        "organization_id",
+    )
+    assert column["nullable"] is True

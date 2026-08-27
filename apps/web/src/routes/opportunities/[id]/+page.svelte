@@ -11,8 +11,7 @@
     saveConfig,
     type GlassConfig,
   } from "$lib/client";
-  import { findOpportunityById } from "$lib/opportunities";
-  import { isExcludedOpportunity } from "$lib/opportunity-ranking";
+    import { isExcludedOpportunity } from "$lib/opportunity-ranking";
   import CopyableCode from "$lib/components/CopyableCode.svelte";
   import EmptyState from "$lib/components/EmptyState.svelte";
   import ErrorBanner from "$lib/components/ErrorBanner.svelte";
@@ -56,15 +55,7 @@
       // fetch a page and find the id client-side. It degrades past a few
       // hundred rows; the console warning below is the honest flag for
       // that, not a silent truncation.
-      const listPage = await activeClient.listOpportunities({ first: 100 });
-      if (import.meta.env.DEV && listPage.nextCursor !== null) {
-        console.warn(
-          "[opportunities/[id]] listOpportunities({first:100}) fallback has more rows than fetched " +
-            "(nextCursor present) — this detail lookup can silently miss records past the first 100. " +
-            "See FR-OPP-3 / NFR-1 / BE-1.",
-        );
-      }
-      const found = findOpportunityById(listPage.items, opportunityId);
+      const found = await activeClient.getOpportunity(opportunityId);
       if (found === null) {
         notFound = true;
       } else {
@@ -99,13 +90,21 @@
   {:else if notFound}
     <EmptyState
       title="Opportunity not found"
-      description="No opportunity with this id was found in the first 100 rows of the projection. It may not exist, or (FR-OPP-3/NFR-1) it may be past the client-side fallback's lookup window."
+      description="No opportunity with this id exists in the projection."
     />
   {:else if opportunity}
     <Panel title="Overview">
       <dl class="ccc-detail-grid">
         <dt>Employer</dt>
         <dd>{opportunity.employer}</dd>
+        <dt>Organization</dt>
+        <dd>
+          {#if opportunity.organizationId}
+            <a href={`/organizations/${opportunity.organizationId}`}>View organization</a>
+          {:else}
+            Not linked — create a matching organization record or re-ingest via lead convert.
+          {/if}
+        </dd>
         <dt>Title</dt>
         <dd>{opportunity.title}</dd>
         <dt>Status</dt>

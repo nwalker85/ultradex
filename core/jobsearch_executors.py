@@ -46,6 +46,7 @@ from .jobsearch_models import (
     ProjectionCheckpointDB,
     RelationshipProjectionDB,
 )
+from .jobsearch_organization_resolve import resolve_organization_id
 from .jobsearch_receipts import ReceiptIssuer
 from .models import EventType, OperationDB, OperationStatus
 from .operation_service import OperationService
@@ -730,9 +731,16 @@ class JobSearchExecutor:
             }
         )
         now = self._now()
+        employer = str(command.parameters["employer"])
+        org_id = resolve_organization_id(
+            self._db,
+            employer,
+            organization_id=command.parameters.get("organization_id"),
+        )
         row = OpportunityProjectionDB(
             id=f"opportunity-{uuid.uuid4()}",
-            employer_name=str(command.parameters["employer"]),
+            organization_id=org_id,
+            employer_name=employer,
             title=str(command.parameters["title"]),
             location=None,
             role_family=None,
@@ -1278,6 +1286,8 @@ class JobSearchExecutor:
 
         opp_row = OpportunityProjectionDB(
             id=opp_id,
+            organization_id=lead.organization_id
+            or resolve_organization_id(self._db, lead.employer),
             employer_name=lead.employer,
             title=str(params.get("custom_title") or lead.title),
             location=lead.location,

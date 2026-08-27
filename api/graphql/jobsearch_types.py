@@ -113,9 +113,15 @@ class Opportunity:
     freshness: ProjectionFreshness
     created_at: datetime
     updated_at: datetime
+    organization_id: str | None = None
 
     @classmethod
-    def from_contract(cls, contract: OpportunityV1) -> "Opportunity":
+    def from_contract(
+        cls,
+        contract: OpportunityV1,
+        *,
+        organization_id: str | None = None,
+    ) -> "Opportunity":
         return cls(
             opportunity_id=contract.opportunity_id,
             employer=contract.employer,
@@ -135,6 +141,7 @@ class Opportunity:
             freshness=ProjectionFreshness.from_contract(contract.freshness),
             created_at=_datetime(contract.created_at),
             updated_at=_datetime(contract.updated_at),
+            organization_id=organization_id,
         )
 
 
@@ -306,9 +313,18 @@ class OpportunityPage:
     def from_page(
         cls,
         page: ProjectionPage[OpportunityV1],
+        *,
+        organization_ids: dict[str, str | None] | None = None,
     ) -> "OpportunityPage":
+        org_map = organization_ids or {}
         return cls(
-            items=[Opportunity.from_contract(item) for item in page.items],
+            items=[
+                Opportunity.from_contract(
+                    item,
+                    organization_id=org_map.get(item.opportunity_id),
+                )
+                for item in page.items
+            ],
             freshness=(
                 None
                 if page.freshness is None

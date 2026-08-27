@@ -27,7 +27,7 @@ import {
 } from "./fixtures.js";
 
 const EXPECTED_OPPORTUNITIES_QUERY =
-  "query ListOpportunities($first: Int!, $after: String, $status: String) { opportunities(first: $first, after: $after, status: $status) { items { opportunityId employer title location roleFamily status fitScore fitExplanation riskFlags evidenceRefs { evidenceId sourceKind sourceRef classification observedAt commitment redactedSummary } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
+  "query ListOpportunities($first: Int!, $after: String, $status: String, $organizationId: String) { opportunities(first: $first, after: $after, status: $status, organizationId: $organizationId) { items { opportunityId organizationId employer title location roleFamily status fitScore fitExplanation riskFlags evidenceRefs { evidenceId sourceKind sourceRef classification observedAt commitment redactedSummary } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
 const EXPECTED_APPLICATIONS_QUERY =
   "query ListApplications($first: Int!, $after: String, $status: String, $opportunityId: String) { applications(first: $first, after: $after, status: $status, opportunityId: $opportunityId) { items { applicationId opportunityId status stageHistory { status occurredAt evidenceRef } artifactRefs nextAction nextActionAt freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
 const EXPECTED_RELATIONSHIPS_QUERY =

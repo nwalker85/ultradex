@@ -10,6 +10,8 @@ from strawberry.scalars import JSON
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from core.jobsearch_models import OpportunityProjectionDB
+from core.jobsearch_models import OpportunityProjectionDB
 from core import (
     JobSearchProjectionRepository,
     OperationDB,
@@ -136,13 +138,15 @@ class Query:
         info: strawberry.Info,
         id: str,
     ) -> Opportunity | None:
-        projection = JobSearchProjectionRepository(
-            info.context["db"]
-        ).get_opportunity(id)
-        return (
-            None
-            if projection is None
-            else Opportunity.from_contract(projection)
+        db = info.context["db"]
+        row = db.get(OpportunityProjectionDB, id)
+        if row is None:
+            return None
+        repo = JobSearchProjectionRepository(db)
+        projection = repo._opportunity(row, repo._checkpoint("opportunities"))
+        return Opportunity.from_contract(
+            projection,
+            organization_id=row.organization_id,
         )
 
     @strawberry.field
@@ -152,15 +156,16 @@ class Query:
         first: int = 25,
         after: str | None = None,
         status: str | None = None,
+        organization_id: str | None = None,
     ) -> OpportunityPage:
-        page = JobSearchProjectionRepository(
-            info.context["db"]
-        ).list_opportunities(
+        repo = JobSearchProjectionRepository(info.context["db"])
+        page, org_ids = repo.list_opportunities_with_organization_ids(
             first=first,
             after=after,
             status=status,
+            organization_id=organization_id,
         )
-        return OpportunityPage.from_page(page)
+        return OpportunityPage.from_page(page, organization_ids=org_ids)
 
     @strawberry.field
     def application(

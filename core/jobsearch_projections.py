@@ -157,6 +157,27 @@ class JobSearchProjectionRepository:
             return None
         return self._opportunity(row, self._checkpoint("opportunities"))
 
+    def get_opportunity_organization_id(
+        self,
+        opportunity_id: str,
+    ) -> str | None:
+        row = self._session.get(OpportunityProjectionDB, opportunity_id)
+        return None if row is None else row.organization_id
+
+    def organization_ids_for_opportunities(
+        self,
+        opportunity_ids: list[str],
+    ) -> dict[str, str | None]:
+        if not opportunity_ids:
+            return {}
+        rows = self._session.execute(
+            select(
+                OpportunityProjectionDB.id,
+                OpportunityProjectionDB.organization_id,
+            ).where(OpportunityProjectionDB.id.in_(opportunity_ids))
+        )
+        return {row.id: row.organization_id for row in rows}
+
     def get_application(self, application_id: str) -> ApplicationV1 | None:
         row = self._session.scalar(
             select(ApplicationProjectionDB).where(
@@ -284,18 +305,63 @@ class JobSearchProjectionRepository:
         first: int,
         after: str | None = None,
         status: str | None = None,
+        organization_id: str | None = None,
     ) -> ProjectionPage[OpportunityV1]:
         status = _validate_status(status, OPPORTUNITY_STATUSES_V1)
-        filters = (
-            () if status is None else (OpportunityProjectionDB.state == status,)
-        )
+        filters = []
+        if status is not None:
+            filters.append(OpportunityProjectionDB.state == status)
+        if organization_id is not None:
+            filters.append(
+                OpportunityProjectionDB.organization_id == organization_id
+            )
         return self._page(
             model=OpportunityProjectionDB,
             projection_type="opportunities",
             first=first,
             after=after,
-            filters=filters,
+            filters=tuple(filters),
             converter=self._opportunity,
+        )
+
+    def list_opportunities_with_organization_ids(
+        self,
+        first: int,
+        after: str | None = None,
+        status: str | None = None,
+        organization_id: str | None = None,
+    ) -> tuple[ProjectionPage[OpportunityV1], dict[str, str | None]]:
+        status = _validate_status(status, OPPORTUNITY_STATUSES_V1)
+        filters = []
+        if status is not None:
+            filters.append(OpportunityProjectionDB.state == status)
+        if organization_id is not None:
+            filters.append(
+                OpportunityProjectionDB.organization_id == organization_id
+            )
+        limit = _bounded_first(first)
+        statement = select(OpportunityProjectionDB)
+        if after is not None:
+            statement = statement.where(OpportunityProjectionDB.id > after)
+        if filters:
+            statement = statement.where(*filters)
+        statement = statement.order_by(OpportunityProjectionDB.id.asc()).limit(
+            limit + 1
+        )
+        rows = list(self._session.scalars(statement))
+        freshness = self._checkpoint("opportunities")
+        has_next = len(rows) > limit
+        page_rows = rows[:limit]
+        items = tuple(self._opportunity(row, freshness) for row in page_rows)
+        org_ids = {row.id: row.organization_id for row in page_rows}
+        next_cursor = page_rows[-1].id if has_next else None
+        return (
+            ProjectionPage(
+                items=items,
+                freshness=freshness,
+                next_cursor=next_cursor,
+            ),
+            org_ids,
         )
 
     def list_applications(

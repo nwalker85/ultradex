@@ -470,6 +470,7 @@ export const opportunitySchema = z
     freshness: projectionFreshnessSchema,
     createdAt: isoTimestampSchema,
     updatedAt: isoTimestampSchema,
+    organizationId: nonEmptyStringSchema.nullable().optional(),
   })
   .strict();
 
