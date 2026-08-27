@@ -5,7 +5,7 @@ set -euo pipefail
 : "${SHA:?SHA required}"
 : "${DEPLOY_SERVICES:?comma-separated service keys (api, glass)}"
 
-readonly VAKR_SSH="${VAKR_SSH:-vakr-svc}"
+readonly VAKR_SSH="${VAKR_SSH:-ravenhelm@vakr.ravenmask.net}"
 readonly NAMESPACE="${CCC_NAMESPACE:-ccc-tmp}"
 readonly MANIFEST="${CCC_MANIFEST:-deploy/k0s/ccc.yaml}"
 readonly GLASS_URL="${CCC_GLASS_URL:-http://10.10.20.101:30808/}"
