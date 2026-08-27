@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session
 
 from .models import ContactBase, ContactDB
 
+DEX_CONTACT_FETCH_TIMEOUT_SECONDS = 3.0
+DEX_ENRICH_STALE_HOURS = 6
+
 
 class DexClient:
     def __init__(self, api_key: str):
@@ -87,9 +90,14 @@ class DexClient:
             payload = response.json().get("data")
             return payload if isinstance(payload, dict) else None
 
-    def fetch_contact_raw_sync(self, contact_id: str) -> dict[str, Any] | None:
-        """Sync Dex contact fetch for use inside FastAPI/GraphQL sync resolvers."""
-        with httpx.Client(timeout=30) as client:
+    def fetch_contact_raw_sync(
+        self,
+        contact_id: str,
+        *,
+        timeout: float = DEX_CONTACT_FETCH_TIMEOUT_SECONDS,
+    ) -> dict[str, Any] | None:
+        """Sync Dex contact fetch — must not run while a request DB session is idle."""
+        with httpx.Client(timeout=timeout) as client:
             response = client.get(
                 f"{self.base_url}/contacts/{contact_id}",
                 headers=self.headers,
@@ -252,20 +260,63 @@ def apply_dex_enrichment(row: ContactDB, dex_data: dict[str, Any]) -> bool:
     return changed
 
 
-def enrich_contact_from_dex(db: Session, contact_id: str) -> ContactDB | None:
-    """Lazy Dex refresh — merges LinkedIn/messaging snippets into communication_history."""
+def _needs_dex_enrichment(row: ContactDB) -> bool:
+    """Avoid blocking page loads on Dex when we already have CRM fields."""
+    if not os.getenv("DEX_API_KEY", "").strip():
+        return False
+    if row.linkedin_url:
+        return False
+    if row.communication_history:
+        return False
+    if row.synced_at is not None:
+        age = datetime.now() - row.synced_at
+        if age.total_seconds() < DEX_ENRICH_STALE_HOURS * 3600:
+            return False
+    return True
+
+
+def refresh_contact_from_dex(contact_id: str) -> bool:
+    """Fetch Dex and persist enrichment using a dedicated DB session (not the request's)."""
     api_key = os.getenv("DEX_API_KEY", "").strip()
+    if not api_key:
+        return False
+
+    try:
+        dex_data = DexClient(api_key).fetch_contact_raw_sync(contact_id)
+    except httpx.HTTPError:
+        return False
+
+    if not dex_data:
+        return False
+
+    from .database import _db
+
+    if _db is None:
+        return False
+
+    session = _db.SessionLocal()
+    try:
+        row = session.get(ContactDB, contact_id)
+        if row is None:
+            return False
+        changed = apply_dex_enrichment(row, dex_data)
+        row.synced_at = datetime.now()
+        if changed or row.linkedin_url:
+            session.commit()
+            return True
+        return False
+    finally:
+        session.close()
+
+
+def enrich_contact_from_dex(db: Session, contact_id: str) -> ContactDB | None:
+    """Return contact row; optionally refresh missing Dex fields without blocking the pool."""
     row = db.get(ContactDB, contact_id)
     if row is None:
         return None
-    if not api_key:
-        return row
-
-    dex_data = DexClient(api_key).fetch_contact_raw_sync(contact_id)
-    if not dex_data:
-        return row
-
-    if apply_dex_enrichment(row, dex_data):
-        db.commit()
+    if _needs_dex_enrichment(row):
+        refresh_contact_from_dex(contact_id)
+        db.expire(row)
         db.refresh(row)
     return row
+

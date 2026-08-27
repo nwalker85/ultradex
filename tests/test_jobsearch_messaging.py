@@ -331,3 +331,15 @@ def test_apply_dex_enrichment_sets_linkedin_url_and_history() -> None:
     assert row.linkedin_url == "https://www.linkedin.com/in/aayushmediratta"
     assert len(row.communication_history) == 1
     assert row.communication_history[0]["channel"] == "linkedin"
+
+
+def test_needs_dex_enrichment_skips_when_linkedin_present(monkeypatch) -> None:
+    from core.dex_client import _needs_dex_enrichment
+
+    monkeypatch.setenv("DEX_API_KEY", "test-key")
+    row = ContactDB(
+        id="contact-abc",
+        name="Aayush M.",
+        linkedin_url="https://www.linkedin.com/in/aayushmediratta",
+    )
+    assert _needs_dex_enrichment(row) is False
