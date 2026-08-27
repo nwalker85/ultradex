@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Badge, Input, Panel, Table } from "@ravenhelm/ui-svelte";
+  import { Badge, Field, Panel, Table } from "@ravenhelm/ui-svelte";
   import type { Contact, Opportunity, Relationship } from "@ultradex/sdk";
 
   import {
@@ -109,7 +109,7 @@
   {:else}
     <Panel title="Relationships" meta={freshness}>
       <div class="ccc-actions" style="margin-bottom: 0.75rem">
-        <Input
+        <Field
           label="Search"
           placeholder="Name, organization, role…"
           bind:value={search}
