@@ -1,28 +1,23 @@
-# .forgejo/services.map — per-repo service map for change-scoped build/deploy (A/B).
-# This file is SOURCED as bash by scope-lib.sh with IMG / CTX / PREFIX / FILE already
-# `declare -A`'d and $REPO in scope. Delete it to fall back to the single-service
-# default (IMG[web]="$REPO-web", context=".", FILE="Dockerfile", catch-all).
+# ultradex — CCC k0s deploy (vakr / ccc-tmp).
+# Images are local tags imported via `k0s ctr images import` (imagePullPolicy: Never).
+# deploy-on-host.sh dedupes glass_* keys to one ccc/glass:dev build.
 #
-# For each compose service:
-#   IMG[<svc>]     Harbor image name (project is the repo; tag is the git SHA)
-#   CTX[<svc>]     docker build context (path)
-#   FILE[<svc>]    Dockerfile path, RELATIVE TO THE REPO ROOT (docker build -f);
-#                  empty/unset => docker's default of <CTX>/Dockerfile.
-#   PREFIX[<svc>]  path prefix that "owns" this service for change-scoping;
-#                  EMPTY string marks the catch-all service (root/src changes).
-#   SECRET[<svc>]  (OPTIONAL) BuildKit secret id (e.g., "MIMIR_SDK_TOKEN");
-#                  if set, SECRETSRC must also be set, and the src file must exist.
-#   SECRETSRC[<svc>] (OPTIONAL) path to the secret file on the build host;
-#                  sourced as --secret id=<id>,src=<file> (e.g., "$HOME/services/<repo>/.token").
-#
-# Single-service default (equivalent to no file):
-IMG[web]="${REPO}-web"; CTX[web]="."; FILE[web]="Dockerfile"; PREFIX[web]=""
-SECRET[web]="forgejo_netrc"; SECRETSRC[web]="$HOME/services/forge-toolkit/.forgejo-netrc"
-#
-# Multi-service example, modelled on heimdall (uncomment + adapt):
-# IMG[web]="${REPO}-web";         CTX[web]=".";                 FILE[web]="Dockerfile";                        PREFIX[web]=""                  # catch-all
-# IMG[ingest]="${REPO}-ingest";   CTX[ingest]="./ingest-service";  FILE[ingest]="ingest-service/Dockerfile";   PREFIX[ingest]="ingest-service/"
-# IMG[scanner]="${REPO}-scanner"; CTX[scanner]="./scanner-service"; FILE[scanner]="scanner-service/Dockerfile"; PREFIX[scanner]="scanner-service/"
-#
-# Per-service secret example (only uncomment if the Dockerfile uses RUN --mount=type=secret,id=<id> ...):
-# SECRET[ingest]="MIMIR_SDK_TOKEN"; SECRETSRC[ingest]="$HOME/services/forge-toolkit/.mimir-token"
+IMG[api]="ccc/ultradex"
+CTX[api]="."
+FILE[api]="Dockerfile"
+PREFIX[api]=""
+
+IMG[glass]="ccc/glass"
+CTX[glass]="."
+FILE[glass]="apps/web/Dockerfile"
+PREFIX[glass]="apps/web/"
+
+IMG[glass_sdk]="ccc/glass"
+CTX[glass_sdk]="."
+FILE[glass_sdk]="apps/web/Dockerfile"
+PREFIX[glass_sdk]="sdk/typescript/"
+
+IMG[glass_ui]="ccc/glass"
+CTX[glass_ui]="."
+FILE[glass_ui]="apps/web/Dockerfile"
+PREFIX[glass_ui]="packages/ui-svelte/"

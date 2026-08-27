@@ -1,0 +1,52 @@
+name: forgejo-deploy
+
+# Profile A — CCC on k0s (vakr / ccc-tmp). On merge to main, SSH to ravenmask@hrafngud
+# and run .forgejo/deploy-on-host.sh: scope changed paths, build ccc/*:dev images,
+# import into k0s, rollout, verify NodePorts.
+#
+# Pairs with: .forgejo/deploy-on-host.sh, scripts/deploy-k0s.sh, .forgejo/scope-lib.sh,
+# .forgejo/services.map, and the shared PR gate .forgejo/workflows/ci.yml.
+# Required secrets: HRAFNGUD_SSH_KEY, CI_GIT_TOKEN.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Comma-separated services to force-deploy (api, glass; blank = auto by changed paths)"
+        required: false
+        default: ""
+
+env:
+  HOST: hrafngud.ravenmask.net
+
+jobs:
+  deploy:
+    runs-on: docker
+    steps:
+      - name: Install host SSH key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.HRAFNGUD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Deploy changed services to k0s
+        env:
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.event.repository.name }}
+          FORCE_SERVICES: ${{ github.event.inputs.services }}
+          FJTOKEN: ${{ secrets.CI_GIT_TOKEN }}
+        run: |
+          FJTOKEN_B64=$(printf '%s' "$FJTOKEN" | base64 | tr -d '\n')
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o BatchMode=yes \
+            "ravenmask@${HOST}" \
+            SHA="$SHA" REPO="$REPO" FORCE_SERVICES="$FORCE_SERVICES" FJTOKEN_B64="$FJTOKEN_B64" \
+            bash -seuo pipefail <<'REMOTE'
+          FJTOKEN=$(printf '%s' "$FJTOKEN_B64" | base64 -d)
+          WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
+          git clone -q --single-branch --branch main "http://nate:${FJTOKEN}@hrafngud.ravenmask.net:3300/nate/${REPO}.git" "$WORK/h"
+          cd "$WORK/h"
+          git checkout -q "$SHA"
+          SHA="$SHA" REPO="$REPO" FORCE_SERVICES="$FORCE_SERVICES" bash .forgejo/deploy-on-host.sh
+          REMOTE
