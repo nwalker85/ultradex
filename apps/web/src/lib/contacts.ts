@@ -100,6 +100,16 @@ export function sortCommunicationHistoryDesc(
   return [...history].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 }
 
+export function communicationChannelLabel(channel: CommunicationEntry["channel"]): string {
+  if (channel === "linkedin") return "LinkedIn";
+  if (channel === "gmail") return "Gmail";
+  return "Dex";
+}
+
+export function communicationDirectionLabel(direction: CommunicationEntry["direction"]): string {
+  return direction === "inbound" ? "Inbound" : "Outbound";
+}
+
 export function contactsEmptyState(criteria: ContactFilterCriteria): {
   title: string;
   description: string;

@@ -444,8 +444,8 @@ class Query:
     def contact(self, info: strawberry.Info, id: str) -> Optional[ContactGQL]:
         """Fetch a Dex contact with advocacy score and communication history."""
         db: Session = info.context["db"]
-        from core.models import ContactDB
-        row = db.get(ContactDB, id)
+        from core.dex_client import enrich_contact_from_dex
+        row = enrich_contact_from_dex(db, id)
         if row is None:
             return None
         return ContactGQL.from_db(row)

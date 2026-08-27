@@ -11,7 +11,8 @@
     saveConfig,
     type GlassConfig,
   } from "$lib/client";
-  import { relationshipTierTone } from "$lib/contacts";
+  import { relationshipTierTone, sortCommunicationHistoryDesc, communicationChannelLabel, communicationDirectionLabel } from "$lib/contacts";
+  import { messageChannelTone } from "$lib/inbox";
   import {
     buildRelationshipDisplay,
     dexRefToContactId,
@@ -39,6 +40,9 @@
     relationship
       ? buildRelationshipDisplay(relationship, contact, opportunity)
       : null,
+  );
+  const communicationHistory = $derived(
+    contact ? sortCommunicationHistoryDesc(contact.communicationHistory) : [],
   );
 
   async function load(): Promise<void> {
@@ -133,6 +137,9 @@
             {#if contact.notes}
               <div><dt>Legacy notes</dt><dd>{contact.notes}</dd></div>
             {/if}
+            {#if contact.linkedinUrl}
+              <div><dt>LinkedIn</dt><dd><a href={contact.linkedinUrl} target="_blank" rel="noreferrer">Profile</a></dd></div>
+            {/if}
           </dl>
         {:else}
           <dl class="ccc-detail-list">
@@ -174,6 +181,39 @@
         </dl>
       </Panel>
     </div>
+    {#if contact}
+      <Panel
+        title="Communication"
+        meta={communicationHistory.length ? `${communicationHistory.length} record(s)` : "No synced messages yet"}
+      >
+        {#if communicationHistory.length === 0}
+          <p class="ccc-empty">
+            No communication records in Ultradex yet. Dex LinkedIn sync surfaces the latest
+            conversation snippet here when available — re-open the thread in Dex mobile if you
+            expect a LinkedIn message that is missing.
+          </p>
+        {:else}
+          <ul class="ccc-comm-list">
+            {#each communicationHistory as entry (entry.id)}
+              <li class="ccc-comm-list__item">
+                <div class="ccc-comm-list__meta">
+                  <Badge tone={messageChannelTone(entry.channel)}>
+                    {communicationChannelLabel(entry.channel)}
+                  </Badge>
+                  <span>{communicationDirectionLabel(entry.direction)}</span>
+                  <time datetime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time>
+                </div>
+                <strong>{entry.subject}</strong>
+                <p>{entry.summary}</p>
+                {#if entry.threadId}
+                  <p><a href={entry.threadId} target="_blank" rel="noreferrer">Open thread</a></p>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </Panel>
+    {/if}
     <EntityNotes
       {config}
       entityType="relationship"
@@ -210,6 +250,35 @@
   }
 
   .ccc-detail-list dd {
+    margin: 0;
+  }
+
+  .ccc-comm-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .ccc-comm-list__item {
+    border: 1px solid var(--ccc-border, #2a2a2a);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .ccc-comm-list__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--rh-muted);
+  }
+
+  .ccc-comm-list__item p {
     margin: 0;
   }
 </style>

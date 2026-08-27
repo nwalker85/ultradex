@@ -1,9 +1,16 @@
 """Client for Dex REST API"""
 
+from __future__ import annotations
+
+import asyncio
+import os
+from datetime import datetime, timezone
+from typing import Any, List, Optional
+
 import httpx
-from typing import List, Optional
-from datetime import datetime
-from .models import ContactBase
+from sqlalchemy.orm import Session
+
+from .models import ContactBase, ContactDB
 
 
 class DexClient:
@@ -67,6 +74,19 @@ class DexClient:
                 )
 
         return contacts
+
+    async def fetch_contact_raw(self, contact_id: str) -> dict[str, Any] | None:
+        """Fetch raw Dex contact payload (LinkedIn message metadata lives here)."""
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{self.base_url}/contacts/{contact_id}",
+                headers=self.headers,
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            payload = response.json().get("data")
+            return payload if isinstance(payload, dict) else None
     
     async def write_note(self, contact_id: str, note_content: str) -> bool:
         """Write analysis note to contact's timeline"""
@@ -116,3 +136,124 @@ class DexClient:
         if phones and isinstance(phones, list):
             return phones[0].get("phone_number") if isinstance(phones[0], dict) else phones[0]
         return None
+
+
+def _linkedin_profile_url(dex_data: dict[str, Any]) -> str | None:
+    handle = (dex_data.get("linkedin") or "").strip()
+    if not handle:
+        return None
+    if handle.startswith("http://") or handle.startswith("https://"):
+        return handle
+    return f"https://www.linkedin.com/in/{handle.removeprefix('@')}"
+
+
+def _dex_channel_entry(
+    *,
+    contact_id: str,
+    channel: str,
+    prefix: str,
+    snippet: str | None,
+    occurred_at: str | None,
+    thread_link: str | None,
+    subject: str,
+) -> dict[str, Any] | None:
+    if not snippet and not occurred_at and not thread_link:
+        return None
+    return {
+        "id": f"dex-{prefix}-{contact_id}",
+        "timestamp": occurred_at or datetime.now(timezone.utc).isoformat(),
+        "channel": channel,
+        "direction": "inbound",
+        "subject": subject,
+        "summary": (snippet or "Open thread in Dex to view the latest message.")[:500],
+        "message_id": None,
+        "evidence_ref": None,
+        "thread_id": thread_link,
+    }
+
+
+def communication_entries_from_dex(
+    contact_id: str,
+    dex_data: dict[str, Any],
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for prefix, channel, subject in (
+        ("linkedin", "linkedin", "LinkedIn conversation"),
+        ("whatsapp", "dex", "WhatsApp conversation"),
+        ("imessage", "dex", "iMessage conversation"),
+        ("instagram", "dex", "Instagram conversation"),
+    ):
+        entry = _dex_channel_entry(
+            contact_id=contact_id,
+            channel=channel,
+            prefix=prefix,
+            snippet=dex_data.get(f"{prefix}_last_message_snippet"),
+            occurred_at=dex_data.get(f"{prefix}_last_message_at"),
+            thread_link=dex_data.get(f"{prefix}_message_link"),
+            subject=subject,
+        )
+        if entry is not None:
+            entries.append(entry)
+    return entries
+
+
+def merge_communication_history(
+    existing: list[dict[str, Any]] | None,
+    incoming: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = {item["id"]: item for item in (existing or []) if item.get("id")}
+    for entry in incoming:
+        merged[entry["id"]] = entry
+    return sorted(
+        merged.values(),
+        key=lambda item: item.get("timestamp") or "",
+        reverse=True,
+    )
+
+
+def apply_dex_enrichment(row: ContactDB, dex_data: dict[str, Any]) -> bool:
+    changed = False
+    linkedin_url = _linkedin_profile_url(dex_data)
+    if linkedin_url and row.linkedin_url != linkedin_url:
+        row.linkedin_url = linkedin_url
+        changed = True
+
+    incoming = communication_entries_from_dex(row.id, dex_data)
+    if not incoming:
+        return changed
+
+    merged = merge_communication_history(row.communication_history, incoming)
+    if merged != (row.communication_history or []):
+        row.communication_history = merged
+        changed = True
+        latest = merged[0].get("timestamp")
+        if latest:
+            try:
+                parsed = datetime.fromisoformat(latest.replace("Z", "+00:00"))
+                if parsed.tzinfo is not None:
+                    parsed = parsed.replace(tzinfo=None)
+                if row.last_contacted is None or parsed > row.last_contacted:
+                    row.last_contacted = parsed
+                    changed = True
+            except ValueError:
+                pass
+    return changed
+
+
+def enrich_contact_from_dex(db: Session, contact_id: str) -> ContactDB | None:
+    """Lazy Dex refresh — merges LinkedIn/messaging snippets into communication_history."""
+    api_key = os.getenv("DEX_API_KEY", "").strip()
+    row = db.get(ContactDB, contact_id)
+    if row is None:
+        return None
+    if not api_key:
+        return row
+
+    dex_data = asyncio.run(DexClient(api_key).fetch_contact_raw(contact_id))
+    if not dex_data:
+        return row
+
+    if apply_dex_enrichment(row, dex_data):
+        db.commit()
+        db.refresh(row)
+    return row

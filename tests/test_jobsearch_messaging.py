@@ -296,3 +296,38 @@ async def test_outreach_sender_protocol_compliance() -> None:
             idempotency_key="idem-3",
         )
     assert "Unsupported outreach delivery channel" in str(exc.value)
+
+
+def test_communication_entries_from_dex_linkedin_snippet() -> None:
+    from core.dex_client import communication_entries_from_dex
+
+    entries = communication_entries_from_dex(
+        "contact-abc",
+        {
+            "linkedin_last_message_snippet": "Great to connect about the CTO search.",
+            "linkedin_last_message_at": "2026-08-20T14:00:00Z",
+            "linkedin_message_link": "https://www.linkedin.com/messaging/thread/abc/",
+        },
+    )
+    assert len(entries) == 1
+    assert entries[0]["channel"] == "linkedin"
+    assert entries[0]["id"] == "dex-linkedin-contact-abc"
+    assert entries[0]["summary"].startswith("Great to connect")
+
+
+def test_apply_dex_enrichment_sets_linkedin_url_and_history() -> None:
+    from core.dex_client import apply_dex_enrichment
+
+    row = ContactDB(id="contact-abc", name="Aayush M.")
+    changed = apply_dex_enrichment(
+        row,
+        {
+            "linkedin": "aayushmediratta",
+            "linkedin_last_message_snippet": "Following up on our chat.",
+            "linkedin_last_message_at": "2026-08-21T09:30:00Z",
+        },
+    )
+    assert changed is True
+    assert row.linkedin_url == "https://www.linkedin.com/in/aayushmediratta"
+    assert len(row.communication_history) == 1
+    assert row.communication_history[0]["channel"] == "linkedin"
