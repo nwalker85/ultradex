@@ -1,31 +1,88 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Panel, Table } from "@ravenhelm/ui-svelte";
-  import type { Relationship } from "@ultradex/sdk";
+  import { Badge, Input, Panel, Table } from "@ravenhelm/ui-svelte";
+  import type { Contact, Opportunity, Relationship } from "@ultradex/sdk";
 
-  import { createClient, loadConfig, saveConfig, type GlassConfig } from "$lib/client";
+  import {
+    createClient,
+    loadConfig,
+    operatorAuthMissing,
+    saveConfig,
+    type GlassConfig,
+  } from "$lib/client";
+  import { findOpportunityById } from "$lib/opportunities";
+  import {
+    buildRelationshipDisplay,
+    dexRefToContactId,
+    filterRelationshipDisplays,
+    relevanceScoreTone,
+    relationshipsEmptyState,
+  } from "$lib/relationships";
   import { freshnessLabel } from "$lib/whats-next";
-  import CopyableCode from "$lib/components/CopyableCode.svelte";
+  import EmptyState from "$lib/components/EmptyState.svelte";
   import ErrorBanner from "$lib/components/ErrorBanner.svelte";
+  import TokenRequiredNotice from "$lib/components/TokenRequiredNotice.svelte";
 
-  // Moved from the former single-route `+page.svelte` — same data-loading
-  // behavior (listRelationships, first: 50) as before the routing
-  // migration.
   let config = $state<GlassConfig>(loadConfig());
   let loading = $state(false);
   let error = $state<unknown>(null);
   let relationships = $state<Relationship[]>([]);
+  let contactsById = $state<Map<string, Contact>>(new Map());
+  let opportunitiesById = $state<Map<string, Opportunity>>(new Map());
   let freshness = $state<string>("—");
+  let search = $state("");
+
+  const tokenMissing = $derived(operatorAuthMissing(config));
+  const displays = $derived(
+    relationships.map((relationship) =>
+      buildRelationshipDisplay(
+        relationship,
+        contactsById.get(dexRefToContactId(relationship.dexContactRef)) ?? null,
+        findOpportunityById(
+          [...opportunitiesById.values()],
+          relationship.opportunityId,
+        ),
+      ),
+    ),
+  );
+  const filtered = $derived(filterRelationshipDisplays(displays, search));
+  const emptyState = $derived(relationshipsEmptyState(search.trim() !== ""));
 
   async function refresh(): Promise<void> {
+    saveConfig(config);
+    if (tokenMissing) {
+      return;
+    }
     loading = true;
     error = null;
     try {
-      saveConfig(config);
       const client = createClient(config);
-      const page = await client.listRelationships({ first: 50 });
-      relationships = [...page.items];
-      freshness = freshnessLabel(page.freshness);
+      const [relPage, oppPage] = await Promise.all([
+        client.listRelationships({ first: 50 }),
+        client.listOpportunities({ first: 100 }),
+      ]);
+      relationships = [...relPage.items];
+      freshness = freshnessLabel(relPage.freshness);
+
+      const oppMap = new Map<string, Opportunity>();
+      for (const opp of oppPage.items) {
+        oppMap.set(opp.opportunityId, opp);
+      }
+      opportunitiesById = oppMap;
+
+      const contactIds = [
+        ...new Set(relationships.map((rel) => dexRefToContactId(rel.dexContactRef))),
+      ];
+      const contactResults = await Promise.all(
+        contactIds.map((id) => client.getContact(id)),
+      );
+      const contactMap = new Map<string, Contact>();
+      for (const contact of contactResults) {
+        if (contact) {
+          contactMap.set(contact.id, contact);
+        }
+      }
+      contactsById = contactMap;
     } catch (cause) {
       error = cause;
     } finally {
@@ -42,35 +99,53 @@
   <header class="ccc-page-header">
     <h1 class="ccc-page-header__title">Relationships</h1>
     <p class="ccc-page-header__meta">
-      List projection — split view and deep-linked detail land in a later
-      slice.
+      People connected to opportunities — open a row for context, relevance, and
+      linked pipeline records.
     </p>
   </header>
 
-  <!--
-    TODO(FR-REL-1,2): split view with `?open=<id>` deep link (FR-REL-1); no
-    bare "New relationship" entry point — relationships.sync requires an
-    opportunityId, so creation only enters from an Opportunity's Related tab
-    (FR-REL-2). This screen currently ports forward only the existing
-    read-and-list behavior.
-  -->
-  <Panel title="Relationships" meta={freshness}>
-    {#if error}
-      <ErrorBanner {error} />
-    {:else if relationships.length === 0}
-      <p class="ccc-empty">
-        {loading ? "Loading…" : "No relationships in projection."}
-      </p>
-    {:else}
-      <Table columns={["Contact", "Opportunity", "Context"]} caption="Relationships">
-        {#each relationships.slice(0, 12) as relationship}
-          <tr>
-            <th scope="row">{relationship.dexContactRef}</th>
-            <td><CopyableCode value={relationship.opportunityId} /></td>
-            <td>{relationship.relevanceSummary ?? "—"}</td>
-          </tr>
-        {/each}
-      </Table>
-    {/if}
-  </Panel>
+  {#if tokenMissing}
+    <TokenRequiredNotice />
+  {:else}
+    <Panel title="Relationships" meta={freshness}>
+      <div class="ccc-actions" style="margin-bottom: 0.75rem">
+        <Input
+          label="Search"
+          placeholder="Name, organization, role…"
+          bind:value={search}
+        />
+      </div>
+
+      {#if error}
+        <ErrorBanner {error} />
+      {:else if loading && relationships.length === 0}
+        <p class="ccc-empty">Loading…</p>
+      {:else if filtered.length === 0}
+        <EmptyState title={emptyState.title} description={emptyState.description} />
+      {:else}
+        <Table columns={["Name", "Organization", "Role", "Fit"]} caption="Relationships">
+          {#each filtered as row (row.relationship.relationshipId)}
+            <tr>
+              <th scope="row">
+                <a href={`/relationships/${row.relationship.relationshipId}`}>
+                  <strong>{row.name}</strong>
+                </a>
+              </th>
+              <td>{row.organization ?? "—"}</td>
+              <td>{row.role ?? "—"}</td>
+              <td>
+                {#if row.relationship.relevanceScore !== null}
+                  <Badge tone={relevanceScoreTone(row.relationship.relevanceScore)}>
+                    {Math.round(row.relationship.relevanceScore)}
+                  </Badge>
+                {:else}
+                  —
+                {/if}
+              </td>
+            </tr>
+          {/each}
+        </Table>
+      {/if}
+    </Panel>
+  {/if}
 </div>
