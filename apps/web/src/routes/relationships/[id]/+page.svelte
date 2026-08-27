@@ -12,11 +12,9 @@
     type GlassConfig,
   } from "$lib/client";
   import { relationshipTierTone } from "$lib/contacts";
-  import { findOpportunityById } from "$lib/opportunities";
   import {
     buildRelationshipDisplay,
     dexRefToContactId,
-    findRelationshipById,
     relevanceScoreTone,
   } from "$lib/relationships";
   import CopyableCode from "$lib/components/CopyableCode.svelte";
@@ -56,16 +54,18 @@
     opportunity = null;
     try {
       const client = createClient(config);
-      const relPage = await client.listRelationships({ first: 50 });
-      const found = findRelationshipById(relPage.items, relationshipId);
+      const found = await client.getRelationship(relationshipId);
       if (found === null) {
         notFound = true;
         return;
       }
       relationship = found;
-      contact = await client.getContact(dexRefToContactId(found.dexContactRef));
-      const oppPage = await client.listOpportunities({ first: 100 });
-      opportunity = findOpportunityById(oppPage.items, found.opportunityId);
+      const [loadedContact, loadedOpportunity] = await Promise.all([
+        client.getContact(dexRefToContactId(found.dexContactRef)),
+        client.getOpportunity(found.opportunityId),
+      ]);
+      contact = loadedContact;
+      opportunity = loadedOpportunity;
     } catch (cause) {
       error = cause;
     } finally {

@@ -28,6 +28,7 @@ import {
   type NextBestAction,
   type OpportunityCreateParameters,
   type OpportunityScoreParameters,
+  type Opportunity,
   type OpportunityPage,
   type Operation,
   type OperationLifecycleEvent,
@@ -44,6 +45,7 @@ import {
   type RecruiterPillSet,
   type RelationshipSyncParameters,
   type RelationshipPage,
+  type Relationship,
   type SendResult,
   type SourcesIngestParameters,
   type WorkspaceInitializeParameters,
@@ -64,8 +66,10 @@ import {
   GET_NEXT_BEST_ACTIONS_QUERY,
   GET_OPERATION_EVENTS_QUERY,
   GET_OPERATION_QUERY,
+  GET_OPPORTUNITY_QUERY,
   GET_ORGANIZATION_QUERY,
   GET_PROFILE_QUERY,
+  GET_RELATIONSHIP_QUERY,
   LIST_APPLICATIONS_QUERY,
   LIST_CONTACTS_QUERY,
   LIST_INTERVIEW_DEBRIEFS_QUERY,
@@ -103,6 +107,7 @@ import {
   operationVariables,
   operationsResultSchema,
   opportunitiesResultSchema,
+  opportunityResultSchema,
   opportunityVariables,
   organizationResultSchema,
   organizationVariables,
@@ -113,6 +118,7 @@ import {
   recruiterRepliesResultSchema,
   relationshipVariables,
   relationshipsResultSchema,
+  relationshipResultSchema,
   type ApplicationListInput,
   type AvailabilityInput,
   type CalendarEventsInput,
@@ -144,8 +150,10 @@ export interface UltradexReadClient {
   getReadiness(): Promise<ReadinessStatus>;
   getProfile(): Promise<CandidateProfile>;
   listOpportunities(input?: OpportunityListInput): Promise<OpportunityPage>;
+  getOpportunity(opportunityId: string): Promise<Opportunity | null>;
   listApplications(input?: ApplicationListInput): Promise<ApplicationPage>;
   listRelationships(input?: RelationshipListInput): Promise<RelationshipPage>;
+  getRelationship(relationshipId: string): Promise<Relationship | null>;
   listOutreach(input?: OutreachListInput): Promise<OutreachPage>;
   listOperations(input?: OperationListInput): Promise<Operation[]>;
   getOperation(operationId: string): Promise<Operation | null>;
@@ -309,6 +317,15 @@ export class UltradexClient
     return result.opportunities;
   }
 
+  async getOpportunity(opportunityId: string): Promise<Opportunity | null> {
+    const result = await this.executor.requestGraphQL(
+      GET_OPPORTUNITY_QUERY,
+      exactIdVariables("id", opportunityId),
+      opportunityResultSchema,
+    );
+    return result.opportunity;
+  }
+
   async listApplications(
     input: ApplicationListInput = {},
   ): Promise<ApplicationPage> {
@@ -329,6 +346,15 @@ export class UltradexClient
       relationshipsResultSchema,
     );
     return result.relationships;
+  }
+
+  async getRelationship(relationshipId: string): Promise<Relationship | null> {
+    const result = await this.executor.requestGraphQL(
+      GET_RELATIONSHIP_QUERY,
+      exactIdVariables("id", relationshipId),
+      relationshipResultSchema,
+    );
+    return result.relationship;
   }
 
   async listOutreach(

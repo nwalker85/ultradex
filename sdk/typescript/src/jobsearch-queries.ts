@@ -23,6 +23,7 @@ import {
   operationSchema,
   operationStatusSchema,
   opportunityPageSchema,
+  opportunitySchema,
   opportunityStatusSchema,
   organizationPageSchema,
   organizationSchema,
@@ -30,6 +31,7 @@ import {
   outreachStatusSchema,
   recruiterPillSetSchema,
   relationshipPageSchema,
+  relationshipSchema,
 } from "./contracts.js";
 
 export interface OpportunityListInput {
@@ -416,6 +418,12 @@ export const LIST_APPLICATIONS_QUERY =
 
 export const LIST_RELATIONSHIPS_QUERY =
   "query ListRelationships($first: Int!, $after: String, $opportunityId: String) { relationships(first: $first, after: $after, opportunityId: $opportunityId) { items { relationshipId opportunityId dexContactRef relevanceScore relevanceSummary freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
+
+export const GET_RELATIONSHIP_QUERY =
+  "query GetRelationship($id: String!) { relationship(id: $id) { relationshipId opportunityId dexContactRef relevanceScore relevanceSummary freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } }";
+
+export const GET_OPPORTUNITY_QUERY =
+  "query GetOpportunity($id: String!) { opportunity(id: $id) { opportunityId employer title location roleFamily status fitScore fitExplanation riskFlags evidenceRefs { evidenceId sourceKind sourceRef classification observedAt commitment redactedSummary } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } }";
 
 export const LIST_OUTREACH_QUERY =
   "query ListOutreach($first: Int!, $after: String, $status: String, $opportunityId: String) { outreach(first: $first, after: $after, status: $status, opportunityId: $opportunityId) { items { outreachId opportunityId relationshipId status channel messageCommitment approvalContractId sentEvidenceRef freshness { sourceEventId sourceEventPosition projectedAt lagMs status } createdAt updatedAt } freshness { sourceEventId sourceEventPosition projectedAt lagMs status } nextCursor } }";
@@ -860,11 +868,17 @@ query GetInterviewDebrief($id: String!) {
 export const opportunitiesResultSchema = z
   .object({ opportunities: opportunityPageSchema })
   .strict();
+export const opportunityResultSchema = z
+  .object({ opportunity: opportunitySchema.nullable() })
+  .strict();
 export const applicationsResultSchema = z
   .object({ applications: applicationPageSchema })
   .strict();
 export const relationshipsResultSchema = z
   .object({ relationships: relationshipPageSchema })
+  .strict();
+export const relationshipResultSchema = z
+  .object({ relationship: relationshipSchema.nullable() })
   .strict();
 export const outreachResultSchema = z
   .object({ outreach: outreachPageSchema })

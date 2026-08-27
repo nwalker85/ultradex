@@ -227,7 +227,15 @@ class SettingsDB(Base):
 
 # Database setup
 def get_engine(database_url: str):
-    return create_engine(database_url)
+    if database_url.startswith("sqlite"):
+        return create_engine(database_url)
+    return create_engine(
+        database_url,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_timeout=30,
+    )
 
 
 def get_session_factory(database_url: str):
