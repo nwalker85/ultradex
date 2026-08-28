@@ -18,6 +18,7 @@ class ContactBase(BaseModel):
     job_title: Optional[str] = None
     phone: Optional[str] = None
     notes: Optional[str] = None
+    last_contacted: Optional[datetime] = None
 
 
 class ContactAnalysis(BaseModel):

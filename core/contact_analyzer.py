@@ -34,6 +34,7 @@ class ContactAnalyzer:
                     existing.job_title = contact.job_title
                     existing.phone = contact.phone
                     existing.notes = contact.notes
+                    existing.last_contacted = contact.last_contacted
                     existing.updated_at = datetime.now()
                     existing.synced_at = datetime.now()
                 else:
@@ -46,6 +47,7 @@ class ContactAnalyzer:
                         job_title=contact.job_title,
                         phone=contact.phone,
                         notes=contact.notes,
+                        last_contacted=contact.last_contacted,
                         synced_at=datetime.now()
                     )
                     db_session.add(db_contact)
