@@ -31,11 +31,17 @@ class Database:
             not in JOBSEARCH_VERSIONED_TABLES
         ]
         with self.engine.begin() as connection:
-            Base.metadata.create_all(connection, tables=legacy_tables)
+            # Migrations first: legacy `contacts` now carries a FK to
+            # jobsearch_organizations (a versioned table), so on a fresh DB
+            # create_all would raise UndefinedTable if it ran first. The
+            # guarded ALTER in 20260824_0004 no-ops when `contacts` doesn't
+            # exist yet, and create_all below creates it with all current
+            # columns regardless.
             run_jobsearch_migrations(
                 self.database_url,
                 connection=connection,
             )
+            Base.metadata.create_all(connection, tables=legacy_tables)
     
     def get_session(self) -> Session:
         """Get database session"""

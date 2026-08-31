@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import pytest
 from alembic import command
+from alembic.config import Config
 from ravenhelm_contracts.jobsearch_v1 import JOBSEARCH_PROJECTION_TYPES_V1
 from sqlalchemy import Integer, String, create_engine, inspect
 
@@ -245,3 +248,26 @@ def test_opportunity_organization_schema(tmp_path):
         "organization_id",
     )
     assert column["nullable"] is True
+
+
+def test_alembic_env_honours_database_url_env_var(tmp_path, monkeypatch):
+    """RAV-1483: the container runs bare `alembic upgrade head`, which loads
+    migrations/env.py directly (not core.jobsearch_migrations.alembic_config).
+    alembic.ini pins sqlalchemy.url to sqlite:///ultradex.db; without env.py
+    reading DATABASE_URL, alembic silently migrates that throwaway sqlite
+    file while the app connects elsewhere, and uvicorn boots against a
+    database with no alembic_version table.
+    """
+    project_root = Path(__file__).resolve().parents[1]
+    default_sqlite_path = project_root / "ultradex.db"
+    assert not default_sqlite_path.exists()
+
+    target_db = tmp_path / "target.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{target_db}")
+
+    config = Config(str(project_root / "alembic.ini"))
+    command.upgrade(config, "head")
+
+    assert target_db.exists()
+    assert "alembic_version" in inspect(create_engine(f"sqlite:///{target_db}")).get_table_names()
+    assert not default_sqlite_path.exists()
