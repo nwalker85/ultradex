@@ -29,6 +29,46 @@ data:
       }
     }
 ---
+# Durable storage for ccc-tmp postgres (RAV-1483).
+#
+# Single-node k0s lab cluster on vakr with no StorageClass and no existing
+# PersistentVolumes (`kubectl get storageclass` / `get pv` both return "No
+# resources found"). hostPath is the simplest adequate mechanism here: there
+# is only one node, so there is no risk of the pod landing on a node without
+# the data. persistentVolumeReclaimPolicy: Retain means deleting the PVC or
+# the whole ccc-tmp namespace does NOT delete /var/lib/ccc-tmp/postgres on
+# the host — only an explicit `rm -rf` on vakr does. storageClassName: ""
+# plus an explicit volumeName pins the PVC to this exact PV so binding is
+# unambiguous with no StorageClass/dynamic provisioner in the cluster.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-data
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /var/lib/ccc-tmp/postgres
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: ccc-tmp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  volumeName: postgres-data
+  resources:
+    requests:
+      storage: 20Gi
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -97,6 +137,8 @@ metadata:
   name: postgres
   namespace: ccc-tmp
 spec:
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: postgres
@@ -115,11 +157,20 @@ spec:
               value: ultradex_dev_password
             - name: POSTGRES_DB
               value: ultradex
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "ultradex"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
 ---
 apiVersion: apps/v1
 kind: Deployment
