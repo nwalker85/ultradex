@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Build CCC images, import into k0s on vakr, rollout, verify NodePorts.
+# API health verified from vakr (node-local) because NetworkPolicy (RAV-1575) restricts hrafngud→:30800.
+# Glass still verified from hrafngud on allowed NodePort :30808.
 set -euo pipefail
 
 : "${SHA:?SHA required}"
@@ -9,7 +11,7 @@ readonly VAKR_SSH="${VAKR_SSH:-ravenhelm@vakr.ravenmask.net}"
 readonly NAMESPACE="${CCC_NAMESPACE:-ccc-tmp}"
 readonly MANIFEST="${CCC_MANIFEST:-deploy/k0s/ccc.yaml}"
 readonly GLASS_URL="${CCC_GLASS_URL:-http://10.10.20.101:30808/}"
-readonly API_HEALTH_URL="${CCC_API_HEALTH_URL:-http://10.10.20.101:30800/health}"
+readonly API_HEALTH_URL="${CCC_API_HEALTH_URL:-http://127.0.0.1:30800/health}"
 readonly NETRC="${FORGEJO_NETRC:-$HOME/services/forge-toolkit/.forgejo-netrc}"
 readonly NPM_TOKEN_FILE="${FORGEJO_NPM_TOKEN:-$HOME/services/forge-toolkit/.npm-token}"
 
@@ -102,7 +104,7 @@ for i in $(seq 1 20); do
     glass_ok=1
   fi
   if [ "$need_api" = 1 ]; then
-    curl -fsS --connect-timeout 3 --max-time 8 "$API_HEALTH_URL" >/dev/null && api_ok=1
+    ssh -o BatchMode=yes -o ConnectTimeout=15 "$VAKR_SSH" "curl -fsS --connect-timeout 3 --max-time 8 '$API_HEALTH_URL' >/dev/null" && api_ok=1
   else
     api_ok=1
   fi
