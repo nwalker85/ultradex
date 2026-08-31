@@ -1,31 +1,25 @@
-# snotra-template: v3
-# Snotra — sovereign AI PR review (Operation Goldberg). Hybrid image model:
-# runs the public `snotra-review` runtime image (no proprietary content baked in)
-# and fetches the private tuned prompt at runtime from nate/snotra via the bot
-# token. Reviews on PR open/reopen + `/oc` only. COMMENT-state only — never
-# blocks a merge.
+# snotra-template: v4
+# Snotra — sovereign AI PR review council (Operation Goldberg). Hybrid image:
+# runs the public `snotra-review` runtime image and fetches private lens prompts
+# at runtime from nate/snotra. Reviews on PR open/reopen + `/oc` only.
+# Router → code + security lenses → deterministic synthesis → one Forgejo review
+# + commit status `snotra-qa / review` (ADR-0006 / ADR-0007).
 #
-# `synchronize` runs through pull_request_target but NEVER runs a review (ADR-0002
-# holds: no auto-re-review on push). The trusted base workflow runs only
-# `mark-stale`, which posts a neutral status on the new head using Forgejo's
-# ephemeral repository token. No model is invoked — zero tokens, zero comments.
-# See ADR-0003.
+# `synchronize` via pull_request_target only marks the head stale (ADR-0003) —
+# no model, no re-review.
 #
-# This whole file is the ONLY thing a repo vendors — everything else lives in the
-# pinned image. Needs (set once, user-level, inherited fleet-wide):
-#   secrets:   SNOTRA_GIT_TOKEN (snotra bot; also reads the private prompt),
-#              FENRIR_LLM_KEY
-#   variables: FENRIR_URL   (e.g. http://fenrir:11434 — config, never hardcoded)
-#              SNOTRA_RUNNER_LABEL (optional routed lane; defaults to `docker`)
+# Vendored file only. Needs:
+#   secrets:   SNOTRA_GIT_TOKEN, FENRIR_LLM_KEY
+#   variables: FENRIR_URL
+#              SNOTRA_RUNNER_LABEL (optional)
+#              SNOTRA_GATE (optional: advisory|enforce; default advisory)
+#              SNOTRA_TIMEOUT_MS (optional)
 
 name: snotra-review
 
 on:
   pull_request:
     types: [opened, reopened]
-  # The pull_request token is intentionally read-only. This trusted-base event
-  # supplies an ephemeral repository token for the status-only stale marker.
-  # The workflow never checks out or executes pull-request code.
   pull_request_target:
     types: [synchronize]
   issue_comment:
@@ -33,22 +27,21 @@ on:
 
 jobs:
   review:
-    # Do not use a job-level `if`: Forgejo Runner 6.4.0 reports a false guard
-    # as a failed Early termination. The tested selector makes non-review
-    # events a successful no-op inside the job instead.
     runs-on: ${{ vars.SNOTRA_RUNNER_LABEL || 'docker' }}
     container:
-      image: harbor.ravenhelm.dev/snotra/snotra-review@sha256:e0e22d5fb519d0dbf6064520d15f27a7b17a5ca25d9c72a123b71444d076f8f4
+      image: harbor.ravenhelm.dev/snotra/snotra-review@sha256:1214c7efb3c6b72f5f379f4bb160ee9e2ca802d4162aec947a62adafcf6d2c07
     env:
       GITEA_TOKEN: ${{ secrets.SNOTRA_GIT_TOKEN }}
+      SNOTRA_STATUS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITEA_SERVER_URL: ${{ github.server_url }}
       FENRIR_LLM_KEY: ${{ secrets.FENRIR_LLM_KEY }}
       FENRIR_URL: ${{ vars.FENRIR_URL }}
       SNOTRA_TIMEOUT_MS: ${{ vars.SNOTRA_TIMEOUT_MS || '300000' }}
+      SNOTRA_GATE: ${{ vars.SNOTRA_GATE || 'advisory' }}
       PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
       REPO_OWNER: ${{ github.repository_owner }}
       REPO_NAME: ${{ github.event.repository.name }}
-      SNOTRA_PROMPT_PATH: /app/.snotra-review/review-prompt.md
+      SNOTRA_PROMPTS_DIR: /app/.snotra-review/prompts
     steps:
       - name: Route event and review when requested
         env:
@@ -66,34 +59,25 @@ jobs:
             exit 0
           fi
 
+          mkdir -p "${SNOTRA_PROMPTS_DIR}"
           curl -fsS -H "Authorization: token ${GITEA_TOKEN}" \
-            "${GITEA_SERVER_URL}/api/v1/repos/nate/snotra/raw/template/.snotra-review/review-prompt.md?ref=main" \
-            -o "${SNOTRA_PROMPT_PATH}"
-          echo "loaded private review prompt ($(wc -l < "${SNOTRA_PROMPT_PATH}") lines)"
+            "${GITEA_SERVER_URL}/api/v1/repos/nate/snotra/raw/template/.snotra-review/prompts/code.md?ref=main" \
+            -o "${SNOTRA_PROMPTS_DIR}/code.md"
+          curl -fsS -H "Authorization: token ${GITEA_TOKEN}" \
+            "${GITEA_SERVER_URL}/api/v1/repos/nate/snotra/raw/template/.snotra-review/prompts/security.md?ref=main" \
+            -o "${SNOTRA_PROMPTS_DIR}/security.md"
+          echo "loaded council prompts code=$(wc -l < "${SNOTRA_PROMPTS_DIR}/code.md") security=$(wc -l < "${SNOTRA_PROMPTS_DIR}/security.md") lines"
 
           bun /app/.snotra-review/review.ts
 
   mark-stale:
-    # A push landed after Snotra last looked. Do NOT re-review (ADR-0002) — just
-    # make the gap visible, so an older review cannot be mistaken for a verdict on
-    # the current head. Pure API call: no container image, no model, no comment.
-    #
-    # Serialize after `review`: on synchronize that job completes its no-op
-    # before this job posts the review context's pending status, so completion
-    # cannot race and overwrite the pending marker.
     needs: review
     runs-on: docker
     container:
-      # Same pinned Harbor image as the review job: it is already cached on the
-      # runner and ships curl. Avoids depending on the default job image or on
-      # egress to a public registry (these runners have none).
-      image: harbor.ravenhelm.dev/snotra/snotra-review@sha256:e0e22d5fb519d0dbf6064520d15f27a7b17a5ca25d9c72a123b71444d076f8f4
+      image: harbor.ravenhelm.dev/snotra/snotra-review@sha256:1214c7efb3c6b72f5f379f4bb160ee9e2ca802d4162aec947a62adafcf6d2c07
     steps:
       - name: Mark the new head as not yet reviewed
         env:
-          # Runner 6.x exposes Forgejo's automatic token under the GitHub-
-          # compatible alias. On pull_request_target it is repository-scoped,
-          # writable, and destroyed when the workflow completes.
           GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API: ${{ github.server_url }}/api/v1
           OWNER: ${{ github.repository_owner }}
@@ -117,15 +101,17 @@ jobs:
             exit 0
           fi
 
-          # `pending` (not failure): Snotra is advisory and must never look like a
-          # gate. Branch protection requires the CI contexts, never this one.
-          curl -fsS -X POST \
-            -H "Authorization: token ${GITEA_TOKEN}" \
-            -H 'Content-Type: application/json' \
-            "${API}/repos/${OWNER}/${REPO}/statuses/${SHA}" \
-            -d '{
-                  "context": "snotra-review / review (pull_request)",
-                  "state": "pending",
-                  "description": "new commits since the last review — comment /oc to re-review"
-                }' > /dev/null
+          # Pending on the review job context so an old council verdict is not
+          # mistaken for the new head. QA gate context is also pending until /oc.
+          for ctx in "snotra-review / review (pull_request)" "snotra-qa / review"; do
+            curl -fsS -X POST \
+              -H "Authorization: token ${GITEA_TOKEN}" \
+              -H 'Content-Type: application/json' \
+              "${API}/repos/${OWNER}/${REPO}/statuses/${SHA}" \
+              -d "$(python3 -c "import json; print(json.dumps({
+                'context': '''${ctx}''',
+                'state': 'pending',
+                'description': 'new commits since the last review — comment /oc to re-review'
+              }))")" > /dev/null
+          done
           echo "marked ${SHA} as not-yet-reviewed"
