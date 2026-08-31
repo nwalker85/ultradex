@@ -112,6 +112,10 @@ metadata:
   namespace: ccc-tmp
 spec:
   type: NodePort
+  # externalTrafficPolicy: Local preserves the client source IP on NodePort
+  # ingress (no kube-proxy SNAT), which the allow-api-external NetworkPolicy
+  # ipBlock rules below depend on to match.
+  externalTrafficPolicy: Local
   ports:
     - port: 8000
       nodePort: 30800
@@ -125,6 +129,10 @@ metadata:
   namespace: ccc-tmp
 spec:
   type: NodePort
+  # externalTrafficPolicy: Local preserves the client source IP on NodePort
+  # ingress (no kube-proxy SNAT), which the allow-glass-external NetworkPolicy
+  # ipBlock rules below depend on to match.
+  externalTrafficPolicy: Local
   ports:
     - port: 8080
       nodePort: 30808
@@ -458,3 +466,81 @@ spec:
                   value: redis://redis:6379/0
                 - name: ULTRADEX_API_BASE
                   value: http://api:8000
+---
+# RAV-1575: vakr's k0s netpol provider is kube-router. kube-router's
+# `FORWARD -o kube-bridge ACCEPT` rule bypasses ufw's host-scoped allow
+# rules for the api/glass NodePorts, so prior to these policies any host
+# reachable on VLAN 20 or the tailnet could hit `api` (:30800) and `glass`
+# (:30808) unauthenticated. The three ipBlock ranges below are the only
+# clients allowed to reach these Services externally:
+#   - 10.10.20.10/32  hrafngud   Traefik origin for https://ccc.ravenhelm.dev (glass only)
+#   - 10.10.50.2/32   Nate's Mac (glass + api)
+#   - 10.20.10.204/32 Helheim    (glass + api)
+# Ingress-only: no egress policies here. Pod egress to Dex/Gmail/Google APIs
+# must keep working and is out of scope for this change.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: ccc-tmp
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: ccc-tmp
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-glass-external
+  namespace: ccc-tmp
+spec:
+  podSelector:
+    matchLabels:
+      app: glass
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.10.20.10/32
+        - ipBlock:
+            cidr: 10.10.50.2/32
+        - ipBlock:
+            cidr: 10.20.10.204/32
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-external
+  namespace: ccc-tmp
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.10.50.2/32
+        - ipBlock:
+            cidr: 10.20.10.204/32
+      ports:
+        - protocol: TCP
+          port: 8000
