@@ -30,6 +30,18 @@ This design extends the
 and preserves its shared employment/contract opportunity model, provenance,
 custody, and append-only history requirements.
 
+The complete target contract pack also includes:
+
+- the proposed CCC rebuild ADR in this repository;
+- the Mimir Tenant Scope and CCC Identity Resolution Design in
+  `nwalker85/mimir-schema`;
+- the CCC GTM Wire Contract Design in `nate/ravenhelm-contracts`;
+- Yager ADR 0006 for process-isolated leaves; and
+- Yager ADR 0007 for execution identity versus domain authority.
+
+These records are reviewed together. A reference to a target design is not a
+claim that its schema, runtime, policy, migration, or release already exists.
+
 ## Placement during the CCC rebuild
 
 The proposed
@@ -45,6 +57,14 @@ the specification must move with the CCC domain authority before
 implementation. The Ultradex copy then becomes a deprecated pointer; it must
 not remain a competing source of truth.
 
+ADR-014 and its accepted amendments remain current until that later cutover:
+Dex owns current CCC contact truth, Ultradex is the current Python middleware,
+and the Svelte glass uses `@ultradex/sdk`. The proposed rebuild ADR explicitly
+supersedes those three selections only after ratification and a single-writer
+cutover to Mimir plus CCC projections, the fresh CCC domain service, and the
+Next.js/generated-`@ravenhelm/sdk-ts` surface. Before then, this design cannot
+be cited as permission to dual-write, replace the Svelte UI, or bypass Dex.
+
 ## Identity, tenancy, and delegation authority
 
 The supervisor is a named CCC service principal bound to one `workspace_id`
@@ -53,10 +73,50 @@ service identity and the operator principal on whose behalf it acts. Forseti
 must authorize that exact delegation; possession of a CCC credential alone is
 not authority to act for Nate or another tenant.
 
-The supervisor never forwards its credential, operator token, or delegation
-grant into a child brief. Children receive opaque workspace and entity
-references plus profile-bounded CCC reads. They do not call Mimir directly and
-cannot submit CCC commands.
+The command correlation context preserves four distinct identities:
+
+| Stratum | GTM meaning |
+|---|---|
+| Operator | `rig_user_id` for Nate, never Zitadel `sub`. |
+| Durable agent | Mimir Agent `resource_id` / `did:web` for the CCC GTM supervisor. |
+| Workload | SPIFFE identity for the deployed CCC process. |
+| Session | short-lived `did:key` reference for this execution. |
+
+The context also binds the witnessed delegation, policy version,
+workspace-to-tenant mapping version, and deployed revision. Authentication
+establishes identities; Forseti OpenFGA and Cedar authorize the exact action.
+Neither identity nor a raw credential substitutes for authorization.
+
+The durable-agent stratum carries the complete current Mimir resolution proof,
+not only an Agent ID: Agent resource reference and `did:web`, resolution
+reference, registry/resolver/policy versions, lineage, resolved/expiry times,
+`current` freshness, `active` lifecycle, descriptor schema/digest, and package
+surface. A stale, expired, suspended, retired, missing-lineage, or
+package-mismatched supervisor cannot submit a command. Yager's harness
+principal and child execution identity cannot substitute for this CCC product
+principal proof.
+
+Mimir owns the canonical workspace-to-tenant binding registry and its
+side-effect-free resolver. CCC caches only the returned tenant, mapping
+version, freshness, and lineage as a read-only projection. The supervisor must
+resolve and recheck that mapping through the official Mimir SDK; a CCC row,
+route, hostname, token claim, or configuration value cannot create or change
+it.
+
+The supervisor never forwards its credential, operator token, delegation grant,
+connector credential, or CCC client into a child brief. **The initial design
+chooses brokered snapshots, not delegated child reads.** The supervisor performs
+authorized CCC queries and passes a minimum sanitized snapshot with opaque
+entity/evidence references, freshness, lineage, and commitments. Children do
+not call CCC or Mimir, cannot submit commands, and cannot refresh or widen the
+snapshot themselves.
+
+Private Gmail, Calendar, LinkedIn, and contact-system reads are performed by
+bounded CCC source executors under their own governed connector scope. Those
+executors write raw content only to the designated custody system and return
+metadata, opaque references, commitments, and bounded redacted summaries. A
+Yager Relationship Scout analyzes that brokered material; it never receives a
+mailbox, social, or contact-system credential.
 
 Identity resolution is a CCC domain-service responsibility:
 
@@ -73,6 +133,11 @@ The Phase-0 tenancy and authorization gates in the CCC rebuild ADR therefore
 precede live supervisor writes. An intake bundle may carry unresolved identity
 evidence, but it may not mint a canonical Mimir identity or claim that identity
 resolution succeeded.
+
+The canonical route may contain `/t/{tenant}`, but the path is an addressing
+claim, never a grant. The authenticated identities, governed workspace mapping,
+entity parentage, and Forseti Check must agree before lookup. Unauthorized,
+foreign-tenant, and absent entities remain indistinguishable `404`s.
 
 ## Outcome and measurement
 
@@ -126,15 +191,18 @@ canonical organization until its exact identity is confirmed.
 The starting target is **$250,000 annual cash compensation**, defined as base
 salary plus a realistic cash bonus or OTE. Equity, stock, and RSUs are tracked
 separately and do not close a cash-compensation gap. Exceptional roles below
-the target require an explicit operator override; the agent may recommend the
-exception but may not silently lower the target.
+the target require an immutable, interaction-bound operator compensation
+override under the current policy; the agent may recommend the exception but
+may not create the confirmation or silently lower the target. The override and
+its fresh Forseti decision are bound into the qualification snapshot and must
+remain valid at conversion.
 
 ### Initial channel and tool policy
 
 - Use public research and CCC first. Gmail, Calendar, LinkedIn, and other
   private context require the named service/delegation identity and
-  custody-approved metadata-only Relationship Scout boundaries below; they are
-  never implied by general source authorization.
+  custody-approved source-executor and metadata-only Relationship Scout
+  boundaries below; they are never implied by general source authorization.
 - Use no paid GTM, enrichment, warmed-inbox, bulk-email, or LinkedIn-automation
   tools in the initial version.
 - Do not create synthetic contacts merely to fill a funnel.
@@ -150,7 +218,8 @@ public-only Signal Scout, public-evidence BANT analysis, and Outreach Drafter
 pass manually under this specification.
 
 The bridge may read public sources and sanitized CCC projections, prepare a CCC
-intake bundle, and render exact drafts for Nate's approval. It may not read raw
+intake bundle, and render exact drafts for Nate's review and explicit manual-send
+authorization. It may not read raw
 Gmail, Calendar, LinkedIn, contact-note, or other private-source content. A
 private-context bridge requires a separately named, custody-approved,
 metadata-only lane; the general phrase "user-authorized context" is not an
@@ -161,7 +230,18 @@ represent an unconfirmed rate, capacity, relationship, identity, or
 qualification dimension. Any real CCC import uses only the official SDK with
 an idempotency key, receives a `ContractHandle`, and waits for receipt plus
 projection readback. Any external send still requires approval of the exact
-rendered message.
+rendered message; in this bridge that is an operator review, not a governed
+`outreach.approve` receipt.
+
+The bridge writes unexecuted bundles only under the contract-defined path:
+
+```text
+~/var/career-command-center/intake/<workspace_id>/<bundle_id>/bundle.json
+```
+
+The fixed owner, mode, no-symlink, atomic-write, digest, expiry, and disposition
+rules live in the CCC GTM Wire Contract Design. A path or bundle identifier is
+never authority.
 
 This is an operating bridge, not an alternate architecture. It ends when the
 governed supervisor vertical proves the same artifacts can be produced and
@@ -207,14 +287,17 @@ One missing, inferred, unknown, or contradicted dimension keeps the Lead in
 - Need and Timeline must be `validated`.
 - Budget and Authority may be `validated` or `inferred`, but each must have an
   evidence reference and neither may be `unknown` or `contradicted`.
-- Compensation evidence should support the $250,000 cash target. A lower band
-  requires an explicit exceptional-role override before qualification.
+- The snapshot binds evidence-backed annual cash (base plus realistic cash
+  bonus/OTE, equity excluded) against the $250,000 target. A lower amount
+  requires the current immutable interaction-bound operator override described
+  above; unknown compensation cannot satisfy Budget.
 
 ### Opportunity
 
 An Opportunity is created only when a qualified Lead has a confirmed booked
 conversation. The conversion transaction must resolve or create the canonical
-organization and contact, attach the booking interaction, preserve the
+organization and contact, attach the immutable booking proof and its
+interaction, preserve the
 qualification snapshot, create the employment or contract Opportunity, and
 mark the Lead `converted`.
 
@@ -229,20 +312,27 @@ or projection tables directly. Target writes use governed commands with
 idempotency keys, receipts, and append-only events. The logical command surface
 is:
 
-| Command | Purpose |
-|---|---|
-| `leads.create` | Create or enrich a provenance-backed Lead. |
-| `leads.qualify` | Record dimension assessments, evidence, and the resulting MQL state. |
-| `relationships.sync` | Resolve governed relationship metadata without importing raw private content. |
-| `outreach.prepare` | Bind an exact draft commitment and custody reference to a Lead. |
-| `bookings.reconcile` | Resolve confirmed scheduling evidence against a Lead. |
-| `leads.convert` | Atomically create the Opportunity after qualification and booking gates pass. |
+| Command | Contract status | Purpose |
+|---|---|---|
+| `leads.create` | Existing v1; revised in v2 | Create or enrich a provenance-backed Lead. |
+| `leads.override-compensation` | New v2; operator-interactive only | Record an immutable, expiring exception for a below-floor W-2 Lead. |
+| `leads.qualify` | New v2 | Record assessments, evidence, and the resulting immutable BANT snapshot. |
+| `relationships.sync` | Existing v1; revised in v2 | Attach governed relationship metadata to a Lead or Opportunity without raw content. |
+| `outreach.prepare` | Existing v1; revised in v2 | Bind an exact draft commitment and custody reference to a Lead or Opportunity. |
+| `outreach.approve` | Existing v1 tag; v2 semantics replaced | Reconcile a validated Forseti/MFAA/Vor approval result; CCC never issues approval. |
+| `outreach.send` | Existing v1; preserved but disabled initially | Execute only with the matching unexpired approval and approved content custody. |
+| `outreach.cancel` | Existing v1; preserved | Abandon a draft or approved-but-unsent outreach item. |
+| `bookings.reconcile` | New v2 | Resolve confirmed deterministic scheduling evidence against a Lead. |
+| `leads.convert` | Existing v1; strengthened in v2 | Atomically create the Opportunity after qualification and booking gates pass. |
 
-`leads.qualify` and `bookings.reconcile` are target-contract additions. Existing
-command names do not imply the rebuild already implements them. In the future
-CCC control surface, command acceptance returns a `202` plus `ContractHandle`;
-completion is established by the receipt and projection, never by the
-acceptance response.
+`leads.override-compensation`, `leads.qualify`, and `bookings.reconcile` are
+target-contract additions.
+`relationships.sync`, `outreach.prepare`, and `leads.convert` require v2 shapes
+because the GTM workflow acts before an Opportunity exists and requires
+qualification/booking proof. Existing command names do not imply the rebuild
+implements those revisions. Command acceptance returns a `202` plus
+`ContractHandle`; completion is established by the receipt and projection,
+never by the acceptance response.
 
 Every command has a versioned tag, a closed parameter schema, one response
 shape, and a closed refusal-code set. Unknown fields, unknown tags, stale
@@ -260,11 +350,62 @@ qualification_snapshot_stale
 booking_unconfirmed
 booking_participant_unresolved
 content_commitment_mismatch
+content_custody_unavailable
+approval_missing
+approval_expired
+approval_revoked
+approval_artifact_mismatch
+send_not_enabled
 ```
 
 The official SDK, generated from the same schemas, is the only agent write
 surface. Raw HTTP, NATS publication, database access, and an untyped generic
 command escape hatch are prohibited.
+
+Target GTM mutations use `jobsearch/v2` and the four-stratum
+`control-surface/v2` correlation context defined in `ravenhelm-contracts`.
+`jobsearch/v1` remains readable during migration but cannot receive a v2
+mutation because it cannot preserve the full qualification and authority proof.
+At target cutover the gateway atomically retires all v1 mutations, including
+legacy approve/send/convert, before enabling v2 writers. A v1 mutation then
+returns `contract_version_retired` before publication or side effect. There is
+no dual-write or v2-to-v1 mutation adapter; rollback fences v2 before a
+separately authorized legacy authority-epoch reversal.
+
+### Exact outreach approval
+
+`outreach.prepare` commits to one closed artifact containing the outreach ID,
+Lead or Opportunity, recipient, channel, content reference, message commitment,
+qualification/evidence snapshot, policy version, and expiry. That canonical
+object becomes the artifact of one `approval-envelope/v1` leaf. Its
+`artifact_digest`, the separately canonicalized approval event digest, leaf
+sequence/digest, one-leaf Merkle root, and ordered aggregate
+`approved_artifact_digest` are all validated under `exact_match` with approved
+and maximum execution tree sizes fixed at one. The leaf artifact digest and
+aggregate artifact digest are different commitments and cannot be aliased.
+
+The operator reviews the full rendered artifact through the official
+accountability rail. Forseti owns the authorization/JIT decision; MFAA supplies
+device-bound human step-up when required; Vor alone materializes and signs the
+Varar; Bifrost verifies and atomically reserves that single-use authority before
+an independently deployed sender can execute. Freyr may orchestrate this path
+but cannot become an alternate decision-maker or signer. CCC stores only opaque
+request/decision/Varar references, commitments, validity/status projection,
+and lineage. It never stores signing keys, passkey assertions, device
+credentials, or an independent revocation state.
+
+Any content, recipient, channel, subject, evidence, policy, or expiry change
+produces a new digest and invalidates approval. A model, child, supervisor,
+connector, sender, or CCC command cannot approve.
+
+The initial release keeps the rendered body transient in the supervisor UI and
+stores only its commitment in CCC. It stops at `outreach.prepare`: Nate reviews
+and sends the exact draft manually. An operator annotation may record that
+review, but it is not a governed `outreach.approve` receipt and mints no send
+authority. With no approved durable content store and no proven complete
+Forseti/MFAA/Vor/Bifrost integration, both `outreach.approve` and
+`outreach.send` refuse as disabled. Automated sending remains a later,
+separately approved custody and controlled-validation decision.
 
 ### Required data-model extension
 
@@ -272,6 +413,31 @@ The target relational schema must add evidence-bearing Lead qualification and
 conversion proof without moving MEDDPICC out of the Opportunity aggregate:
 
 ```text
+lead_compensation_overrides                immutable, operator-interactive
+- id
+- workspace_id
+- lead_id
+- policy_version
+- annual_cash_floor
+- candidate_annual_cash
+- currency
+- redacted_reason
+- operator_principal_ref
+- operator_confirmation_ref
+- forseti_decision_ref
+- override_digest
+- approved_at
+- expires_at
+- supersedes_override_id
+
+lead_compensation_override_evidence
+- workspace_id
+- override_id
+- ordinal
+- evidence_ref
+- evidence_commitment
+- observed_at
+
 lead_qualification_assessments             append-only
 - id
 - workspace_id
@@ -303,6 +469,10 @@ lead_qualification_snapshots               immutable
 - lead_id
 - policy_version
 - qualification_state                     nurturing | qualified
+- w2_annual_cash_amount                   nullable
+- w2_annual_cash_currency                 nullable
+- w2_annual_cash_evidence_digest          nullable
+- compensation_override_id                nullable
 - snapshot_digest
 - created_at
 
@@ -312,17 +482,56 @@ lead_qualification_snapshot_assessments
 - assessment_id
 - PRIMARY KEY(snapshot_id, dimension)
 
+lead_booking_proofs                        immutable
+- id
+- workspace_id
+- lead_id
+- interaction_id
+- scheduling_provider
+- provider_event_ref                      opaque
+- provider_event_commitment
+- booking_identity_digest
+- observation_fingerprint
+- observation_version
+- event_status                            confirmed | cancelled
+- starts_at
+- ends_at
+- observed_at
+- proof_digest
+- supersedes_booking_proof_id             nullable self-reference
+
+lead_booking_participants
+- workspace_id
+- booking_proof_id
+- participant_ref                         opaque
+- participant_commitment
+- is_external
+- PRIMARY KEY(booking_proof_id, participant_commitment)
+
 lead_conversions
-+ booking_interaction_id
 + qualification_snapshot_id
++ booking_proof_id
 ```
 
 Exactly one typed evidence target is present on each evidence row. A new
 assessment supersedes by reference but never updates or deletes the prior row.
 The immutable snapshot binds one assessment per BANT dimension under one policy
-version; its digest commits to those assessment and evidence identifiers. Lead
-conversion references the snapshot row, not a mutable "current" qualification
-record.
+version; its digest commits to those assessment and evidence identifiers plus
+the evidence-backed W-2 annual-cash amount/currency and compensation override
+ID/digest when a below-floor exception applies. Contract snapshots carry no W-2
+cash fields. That exception must be same-Lead, same-policy, match the snapshot
+cash/currency, be unexpired and unsuperseded, be interaction-bound to the
+operator, and have a freshly positive Forseti decision at qualification and
+conversion. Lead conversion references the snapshot row, not a mutable
+"current" qualification record. A booking proof binds one calendar
+interaction, a stable
+provider-plus-event identity digest, a content/status/time/participant
+observation fingerprint, ordered observation version, provider-event
+commitment, cancellation state, and at least one external participant
+commitment. Changed observations form one same-identity linear supersession
+chain; retries with the same fingerprint reuse the existing proof. Conversion
+references the current confirmed immutable proof rather than a mutable
+interaction alone.
 
 MEDDPICC continues after conversion as Opportunity qualification. BANT is the
 pre-conversion marketing gate; the two models serve different lifecycle
@@ -342,9 +551,9 @@ Initial leaf roles are:
 
 | Role | Inputs | Output | Tool ceiling |
 |---|---|---|---|
-| Signal Scout | ICP, public sources, CCC duplicate checks | Candidate signals with public evidence | Public research and CCC read-only |
-| Relationship Scout | A bounded candidate plus user-authorized connector scope | Relationship paths and metadata-safe evidence references | Private connector reads and CCC read-only |
-| BANT Analyst | Redacted summaries and evidence references | Per-dimension assessment and gaps | CCC/evidence read-only; no source connectors by default |
+| Signal Scout | ICP, public sources, supervisor-brokered duplicate snapshot | Candidate signals with public evidence | Public research only; no CCC client |
+| Relationship Scout | Bounded candidate plus supervisor-brokered metadata snapshot | Relationship paths and metadata-safe evidence references | No connectors, CCC client, or raw private content |
+| BANT Analyst | Brokered redacted summaries, evidence references, freshness, and policy | Per-dimension recommendation and gaps | No CCC, source connector, or mutation tool |
 | Outreach Drafter | Sanitized Lead, offer, relationship, and missing qualification context | One personalized draft plus commitment input | No sender and no CCC writer |
 
 This table is the target role set, not a claim about current Yager profiles. The
@@ -352,11 +561,16 @@ first Yager task-mode release is Reviewer-only. Signal Scout remains in the
 public Codex bridge until a versioned leaf-safe public-research profile is
 independently reviewed; Relationship Scout additionally waits for the private
 telemetry and custody gates. Neither role may fall back to Developer or
-Autonomous task mode.
+Autonomous task mode. Current interactive Reviewer is not leaf-safe by itself:
+task mode must first replace its `$HOME` read scope with no root or an immutable
+manifest-bound task snapshot, empty model-facing write roots, and no
+Bifrost/non-model network tools. Until those adversarial gates pass, Yager
+refuses every child before model execution, including synthetic tasks.
 
 Booking reconciliation is deterministic supervisor logic, not an LLM task
-agent. Calendar evidence, participant identity, timing, and idempotency are
-machine-checkable and should not be inferred by a model.
+agent. The Calendar source executor supplies governed metadata and evidence
+references; participant identity, timing, cancellation state, and idempotency
+are machine-checkable and are not inferred by a model.
 
 ### Task execution boundary
 
@@ -367,11 +581,24 @@ receives an explicit brief and named permission profile, has an isolated
 session and ledger, cannot delegate, and returns a bounded structured result.
 Initial concurrency is one.
 
+Yager ADR 0007 distinguishes execution provenance from domain authority. A leaf
+records its separate Yager harness principal, task execution/session, runtime,
+profile, trace, brief, snapshot, and result commitments, but receives
+`domain_authority = none`. The Yager harness principal is not the CCC
+supervisor's durable agent or SPIFFE workload identity. Those references let
+the supervisor correlate which bounded execution informed its decision; they
+do not authenticate the child as the CCC workload, authorize the child, or
+prove a CCC mutation.
+
 ## Data and custody flow
 
 ```text
 authorized sources
-  -> leaf task reads within its profile
+  -> bounded CCC source executor reads within governed connector scope
+  -> custody store + metadata-only evidence projection
+  -> supervisor performs authorized CCC query
+  -> sanitized immutable child snapshot
+  -> leaf analyzes within its profile
   -> bounded result with evidence references and redacted summaries
   -> supervisor validates result
   -> CCC SDK command
@@ -388,7 +615,9 @@ authorized sources
 - A generic Yager result envelope may not contain raw mailbox or direct-message
   content.
 - Draft outreach content remains in the designated outreach content store or
-  transient supervisor UI. CCC stores its content reference and commitment.
+  transient supervisor UI. The initial release chooses transient UI only; CCC
+  stores its commitment and governed `outreach.approve` plus `outreach.send`
+  remain disabled.
 - Langfuse content capture must be disabled until Yager's metadata-only privacy
   profile is implemented and verified. The Relationship Scout is blocked from
   controlled validation until that gate passes.
@@ -397,8 +626,17 @@ authorized sources
 
 The initial supervisor may programmatically prepare a draft, but it may not
 approve or send one. The operator reviews the full rendered content, channel,
-recipient, Lead, evidence, and commitment before using CCC's governed approval
-and send actions.
+recipient, Lead, evidence, and commitment, then sends manually. The controlled
+vertical records the preparation commitment and may record a non-authoritative
+operator annotation; it does not invoke `outreach.approve` or claim governed
+send authority.
+
+Manual delivery remains unverified until the operator attaches provider-side
+delivery evidence; it never produces an automated-send receipt. Enabling
+`outreach.approve` and `outreach.send` requires the separately approved
+content/action-manifest custody, Forseti/MFAA/Vor/Bifrost convergence, sender
+executor, delivery receipt, revocation/expiry/single-use tests, rollback, and
+controlled-validation gate.
 
 No child receives a sender tool. Any content change invalidates the prior
 commitment and approval. Approval expiry, recipient mismatch, channel mismatch,
@@ -429,12 +667,16 @@ CRM:
 schema_version
 bundle_id
 generated_at
+expires_at
 workspace_ref
-idempotency_keys
+tenant_ref
+generator_identity_ref
+idempotency_keys[]
 proposed_commands[]
 evidence_refs[]
 redacted_summaries[]
 validation_results[]
+bundle_digest
 ```
 
 The bundle is an unexecuted proposal. Importing it later must pass the same
@@ -446,6 +688,11 @@ projection readback before advancing the bundle. Acceptance alone never marks
 an item imported. A local file, spreadsheet, HubSpot record, or Yager ledger
 never becomes interim funnel authority.
 
+The bundle filesystem contract is fixed by the CCC GTM Wire Contract Design:
+operator-owned `0700` directories, `0600` files, no symlinks, exclusive
+temporary creation, atomic publication, digest-match idempotency, 30-day pending
+expiry unless explicitly extended, and metadata-only disposition retention.
+
 ## Failure behavior
 
 - Child timeout, cancellation, malformed output, or profile refusal produces a
@@ -456,8 +703,9 @@ never becomes interim funnel authority.
   source observation.
 - Stale or contradictory evidence reopens the affected qualification dimension
   and can move an MQL back to nurturing before conversion.
-- Booking reconciliation is idempotent by scheduling-provider identifier plus
-  participant/time fingerprint.
+- Booking reconciliation uses a stable provider/event identity digest and a
+  distinct observation fingerprint; exact retries reuse a proof while changes
+  append one linear supersession chain.
 - A command accepted without a completed receipt remains pending, not complete.
 - Connector outages degrade only the affected task. They do not erase or
   downgrade canonical CCC records.
@@ -469,13 +717,18 @@ Implementation planning must provide tests for:
 1. contract qualification refuses every incomplete BANT combination;
 2. W-2 qualification allows evidence-backed inferred Budget or Authority but
    refuses unknown or contradicted dimensions;
-3. compensation below the starting target requires an explicit override;
+3. compensation below the starting target requires a current immutable
+   interaction-bound operator override and fresh Forseti decision; missing,
+   expired, wrong-Lead, wrong-policy, model-minted, or background-supervisor
+   overrides fail;
 4. a confirmed booking converts exactly one MQL to exactly one Opportunity;
 5. an unqualified booking does not convert or increment the KPI;
 6. retries and duplicate source signals do not create duplicate Leads,
-   bookings, or Opportunities;
+   bookings, or Opportunities, while reschedule/cancellation creates exactly
+   one next booking observation and cannot fork the chain;
 7. child processes cannot write CCC or invoke sender tools;
-8. changing draft content invalidates the approval commitment;
+8. changing draft content invalidates the approval commitment, and CCC cannot
+   issue or self-resolve approval authority;
 9. CCC and Yager telemetry remain metadata-only without explicit content
    authorization; and
 10. intake-bundle import produces the same handles, receipts, refusals, and
@@ -483,7 +736,21 @@ Implementation planning must provide tests for:
 11. ambiguous identity and cross-tenant resolution fail before qualification,
     deduplication, contact, or conversion; and
 12. a conversion remains provable after newer qualification assessments are
-    appended because it references an immutable snapshot.
+    appended because it references an immutable snapshot;
+13. operator, current Mimir-resolved durable agent, workload, and session
+    identities cannot collapse or substitute for one another, and stale,
+    inactive, or package-mismatched Agent resolution fails;
+14. a child receives no CCC, Mimir, connector, sender, or delegated domain
+    authority and can use only its committed brokered snapshot;
+15. `/t/{tenant}`, workspace path, entity ID, and source reference tampering
+    cannot change the effective tenant;
+16. prepared outreach cannot send without a freshly resolved Forseti decision,
+    Vor-signed single-use authority, exact current approval artifact, Bifrost
+    enforcement, and an enabled content-custody executor;
+17. backup delivery and a scratch restore drill complete before authority
+    cutover; and
+18. the operator surface distinguishes accepted, in-progress, completed,
+    refused, pending-sync, and stale-projection states.
 
 Controlled validation starts with public-source Signal Scout work and synthetic
 CCC fixtures. Private Relationship Scout validation waits for the Yager privacy
@@ -497,6 +764,9 @@ cutover each require separate approval.
 - Paid enrichment, bulk outbound, warmed inboxes, or social automation.
 - Autonomous approval or sending.
 - Storing raw private source content in CCC, task envelopes, or telemetry.
+- Giving a Yager leaf a CCC, Mimir, source-connector, or sender credential.
+- Treating a local path, task ledger, UI state, accepted command, or ClickHouse
+  projection as domain authority.
 - Implementing deep agent graphs, nested delegation, or parallel fan-out in
   Yager.
 - Retiring HubSpot or the Ultradex runtime without their own migration and
@@ -521,18 +791,46 @@ writes.
 After those authority gates and written-spec approval:
 
 1. Add the generic Yager child-process contract and acceptance tests.
-2. Place this specification in the ratified CCC domain repository and leave a
+2. Implement and validate MIS v2 tenant scope, resolver, migration, and the
+   deployed Phase-0 Brynn test before CCC reads or writes trust Mimir.
+3. Place this specification in the ratified CCC domain repository and leave a
    deprecated pointer here.
-3. Extend the target CCC schema and official SDK contracts for Lead
-   qualification, identity refusal, and booking proof.
-4. Implement a public-only Signal Scout vertical using unexecuted intake
+4. Implement control-surface/jobsearch v2 contracts, bindings, fixtures, and
+   conformance CI in `ravenhelm-contracts`.
+5. Extend the target CCC schema and official SDK contracts for Lead
+   compensation override, qualification, identity refusal, versioned booking
+   proof, and exact outreach approval.
+6. Implement a public-only Signal Scout vertical using unexecuted intake
    bundles.
-5. Implement governed CCC command submission, `ContractHandle`, receipt, and
+7. Implement governed CCC command submission, `ContractHandle`, receipt, and
    projection readback.
-6. Add BANT analysis and draft preparation with operator approval.
-7. Add deterministic Calendar reconciliation and MQL conversion.
-8. Add private Relationship Scout only after telemetry and custody gates pass.
-9. Add the W-2 motion after the contract vertical proves the end-to-end KPI.
+8. Add BANT analysis and transient draft preparation for exact operator review
+   and manual send; keep governed approval reconciliation and automated sending
+   disabled.
+9. Add the governed Calendar source executor, deterministic reconciliation, and
+   MQL conversion.
+10. Prove backup delivery, scratch restore, migration rollback, and the full
+    deployed evidence chain.
+11. Add private relationship metadata only after connector, telemetry, custody,
+    and cross-tenant gates pass.
+12. Add the W-2 motion after the contract vertical proves the end-to-end KPI.
+
+## Delivery responsibility boundaries
+
+| Responsibility | Owner |
+|---|---|
+| Specification, architecture, and final adjudication | Supervisor |
+| Mimir schema and resolver design | Mimir authority, reviewed by Supervisor |
+| Executable wire contracts | `ravenhelm-contracts` authority |
+| Bounded implementation | `bounded-implementer` through Dispatch |
+| Independent diff and contract verification | `claim-verifier` |
+| Live deployment and restore proof | `runtime-verifier` / backup assurance lane |
+| PR preparation and CI readback | `delivery-closer`, which never merges |
+| Exact PR merge after Nate's direct approval | Supervisor |
+
+This role table governs delivery work; it does not turn role primers into
+runtime GTM agents. The product's runtime roles remain the CCC supervisor,
+bounded source executors, and leaf analysis tasks defined above.
 
 This sequence optimizes for near-term revenue while keeping the private-data
 and outbound boundaries fail-closed.
