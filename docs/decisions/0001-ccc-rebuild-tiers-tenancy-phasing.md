@@ -1,6 +1,6 @@
 # ADR-0001: Career Command Center Rebuild — Storage Tiers, Tenancy, and Phasing
 
-- **Status:** Proposed (draft; not authorized for implementation until operator ratification)
+- **Status:** Accepted (2026-09-03; ratified by Nate Walker)
 - **Owner:** Nate Walker
 - **Date:** 2026-09-01
 - **Supersedes:** the CCC runtime and client authorities selected by ADR-014 and
