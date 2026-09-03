@@ -29,11 +29,11 @@ Operator rulings (2026-09-01) this ADR records:
 ### Relationship to accepted ADR-014
 
 ADR-014 and its accepted amendments remain the current CCC authority until a
-separately approved cutover completes. This proposed ADR does not amend them by
+separately approved cutover completes. This ADR does not amend them by
 being written, reviewed, committed, merged, scaffolded, or deployed in shadow
 mode.
 
-If Nate ratifies this exact ADR, it becomes the decision record for a planned
+This Accepted ADR is the decision record for a planned
 replacement and explicitly supersedes these ADR-014 selections only at the
 approved cutover instant:
 
