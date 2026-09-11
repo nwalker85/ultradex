@@ -9,5 +9,11 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "hono": "^4.13.7",
+    "surrealdb": "^2.0.8",
+    "yaml": "^2.9.0",
+    "zod": "^4.6.2"
   }
 }
