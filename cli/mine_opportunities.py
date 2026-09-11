@@ -203,68 +203,33 @@ async def main() -> int:
             if not args.dry_run:
                 await submit_command(base_url, token, "intent.set", DEFAULT_INTENT)
 
-        # Step 2: Discover from Dex Evidence
+        # Step 2: Ingest Dex Evidence into Organizations & Contacts (NOT Opportunities)
         dex_evidence = get_latest_evidence(session, "dex")
         if not dex_evidence:
             print("No Dex evidence found. Run cli.sense_dex first.", file=sys.stderr)
         else:
             print(f"📦 Found Dex evidence: {dex_evidence.evidence_id} ({dex_evidence.redacted_summary})")
             clusters = extract_dex_employer_clusters(session)
-
-            # Target top 20 density companies + strategic AI/Voice employers
-            top_clusters = clusters[:20]
-            print(f"🔍 Discovered {len(top_clusters)} employer clusters from Dex contacts.")
-
-            existing_opps = {
-                (row.employer_name.lower(), row.title.lower()): row.id
-                for row in session.query(OpportunityProjectionDB).all()
-            }
-
-            for item in top_clusters:
+            print(f"🔍 Discovered {len(clusters)} employer clusters from Dex contacts.")
+            
+            # Map employers into Organization directory without creating fake opportunities
+            for item in clusters:
                 employer = item["employer"]
-                title = item["title"]
-                key = (employer.lower(), title.lower())
-
-                opp_id = existing_opps.get(key)
-                if not opp_id:
-                    print(f"➕ Creating Opportunity: {employer} — {title} (density: {item['density']} contacts)")
-                    if not args.dry_run:
-                        await submit_command(
-                            base_url,
-                            token,
-                            "opportunities.create",
-                            {
-                                "employer": employer,
-                                "title": title,
-                                "source_evidence_id": dex_evidence.evidence_id,
-                            },
-                        )
-                        await asyncio.sleep(0.3)
-                        session.expire_all()
-                        created = (
-                            session.query(OpportunityProjectionDB)
-                            .filter(OpportunityProjectionDB.employer_name == employer)
-                            .order_by(OpportunityProjectionDB.created_at.desc())
-                            .first()
-                        )
-                        if created:
-                            opp_id = created.id
-                            existing_opps[key] = opp_id
-                else:
-                    print(f"✓ Opportunity already exists: {employer} ({opp_id})")
-
-                # Bind contacts via relationships.sync
-                if opp_id and not args.dry_run:
-                    for contact in item["contacts"][:5]:
-                        await submit_command(
-                            base_url,
-                            token,
-                            "relationships.sync",
-                            {
-                                "opportunity_id": opp_id,
-                                "dex_contact_ref": f"dex-{contact.id}",
-                            },
-                        )
+                # Ensure organization exists
+                org = session.query(OrganizationDB).filter(OrganizationDB.name == employer).first()
+                if not org:
+                    org = OrganizationDB(
+                        id=f"org-{uuid.uuid4().hex[:12]}",
+                        name=employer,
+                        advocacy_rating=min(100.0, len(item["contacts"]) * 20.0),
+                    )
+                    session.add(org)
+                    session.flush()
+                # Associate contacts with organization
+                for c in item["contacts"]:
+                    c.organization_id = org.id
+            session.commit()
+            print("✓ Organizations and contact associations updated from Dex clusters.")
 
         # Step 3: Discover from Gmail Evidence
         gmail_evidence = get_latest_evidence(session, "gmail")
