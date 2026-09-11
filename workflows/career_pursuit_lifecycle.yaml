@@ -1,0 +1,160 @@
+id: career_pursuit_lifecycle
+version: 1.0.0
+description: Mímir Declarative Workflow for Executive Roles & B2B Consulting Contracts
+
+places:
+  - id: lead_discovered
+    initial: true
+  - id: lead_qualified
+  - id: lead_disqualified
+  - id: target_mapped
+  - id: outreach_initiated
+  - id: application_submitted
+  - id: recruiter_screen_scheduled
+  - id: recruiter_screen_completed
+  - id: hiring_manager_scheduled
+  - id: hiring_manager_completed
+  - id: panel_interview_scheduled
+  - id: panel_interview_completed
+  - id: executive_final_scheduled
+  - id: offer_extended
+  - id: offer_negotiation
+  - id: closed_won
+    terminal: true
+  - id: closed_lost
+    terminal: true
+
+steps:
+  - id: qualify_lead
+    triplet:
+      acting_role: copilot
+      stance: ACT
+      mode: UPDATE
+      target: lead:*
+    preconditions:
+      - be(/bant/budget_fit == true)
+      - be(/bant/need_alignment >= 0.70)
+    produces:
+      - kind: state_effect
+        declaration: be(/state := "qualified")
+
+  - id: disqualify_lead
+    triplet:
+      acting_role: copilot
+      stance: ACT
+      mode: UPDATE
+      target: lead:*
+    preconditions:
+      - be(/bant/budget_fit == false)
+    produces:
+      - kind: state_effect
+        declaration: be(/state := "disqualified")
+
+  - id: convert_lead_to_opportunity
+    triplet:
+      acting_role: nate
+      stance: DECLARE
+      mode: CREATE
+      target: opportunity:*
+    preconditions:
+      - be(/state == "qualified")
+      - have(CONTAINS__SHARED, organization:*)
+    produces:
+      - kind: entity
+        declaration: opportunity:*
+      - kind: state_effect
+        declaration: be(/stage := "1_target")
+
+  - id: initiate_champion_outreach
+    triplet:
+      acting_role: nate
+      stance: ACT
+      mode: INITIATE
+      target: contact:*
+    preconditions:
+      - have(CONNECTS_TO__SHARED, contact:*)
+      - know(contact:*, 0.70)
+      - be(/stage == "1_target")
+    produces:
+      - kind: state_effect
+        declaration: be(/stage := "2_outreach")
+      - kind: claim
+        declaration: cite(outbox, draft_message)
+
+  - id: submit_application
+    triplet:
+      acting_role: nate
+      stance: ACT
+      mode: INITIATE
+      target: opportunity:*
+    preconditions:
+      - have(DESCRIBES__INTERNAL, resume:*)
+      - be(/stage in ["1_target", "2_outreach"])
+    produces:
+      - kind: state_effect
+        declaration: be(/stage := "3_applied")
+
+  - id: schedule_recruiter_screen
+    triplet:
+      acting_role: copilot
+      stance: WITNESS
+      mode: TRANSITION
+      target: opportunity:*
+    preconditions:
+      - cite(google_calendar, event_id)
+      - be(/stage == "3_applied")
+    produces:
+      - kind: state_effect
+        declaration: be(/stage := "4_recruiter_screen")
+
+  - id: complete_recruiter_screen
+    triplet:
+      acting_role: nate
+      stance: ACT
+      mode: UPDATE
+      target: opportunity:*
+    preconditions:
+      - cite(gjallarhorn_debrief, debrief_id)
+      - be(/stage == "4_recruiter_screen")
+    produces:
+      - kind: state_effect
+        declaration: be(/stage := "5_hiring_manager")
+
+  - id: schedule_panel_interview
+    triplet:
+      acting_role: copilot
+      stance: WITNESS
+      mode: TRANSITION
+      target: opportunity:*
+    preconditions:
+      - cite(google_calendar, event_id)
+      - be(/stage == "5_hiring_manager")
+    produces:
+      - kind: state_effect
+        declaration: be(/stage := "6_technical_panel")
+
+  - id: receive_offer
+    triplet:
+      acting_role: recruiter
+      stance: ACT
+      mode: INITIATE
+      target: opportunity:*
+    preconditions:
+      - be(/stage in ["6_technical_panel", "7_executive_final"])
+      - cite(email_thread, offer_letter)
+    produces:
+      - kind: state_effect
+        declaration: be(/stage := "8_offer_negotiation")
+
+  - id: close_won_offer
+    triplet:
+      acting_role: nate
+      stance: DECLARE
+      mode: TRANSITION
+      target: opportunity:*
+    preconditions:
+      - cite(signed_agreement, contract_digest)
+      - be(/stage == "8_offer_negotiation")
+    produces:
+      - kind: state_effect
+        declaration: be(/stage := "closed_won")
