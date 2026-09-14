@@ -82,17 +82,17 @@
   <header class="ccc-page-header">
     <h1 class="ccc-page-header__title">Opportunities</h1>
     <p class="ccc-page-header__meta">
-      Enterprise pursuit pipeline — qualified deals, executive roles, and active consulting contracts.
+      List projection with a real status filter, create composer, and detail links.
     </p>
   </header>
 
   {#if tokenMissing}
     <TokenRequiredNotice />
   {:else}
-    <Panel title="Active Pursuits" meta={freshness}>
+    <Panel title="Opportunities" meta={freshness}>
       <div class="ccc-actions" style="margin-bottom: 0.75rem; justify-content: space-between">
         <Select
-          label="Stage"
+          label="Status"
           options={statusOptions}
           bind:value={statusFilter}
           onchange={() => void refresh()}
@@ -133,7 +133,7 @@
           {/if}
         </EmptyState>
       {:else}
-        <Table columns={["Employer / Target Role", "Pursuit Stage", "MEDDPICC Fit"]} caption="Opportunities">
+        <Table columns={["Employer / role", "ID", "State", "Score"]} caption="Opportunities">
           {#each ranked.scored as opportunity (opportunity.opportunityId)}
             <tr>
               <th scope="row">
@@ -142,18 +142,19 @@
                 </a><br />
                 <span class="ccc-empty">{opportunity.title}</span>
               </th>
-              <td>
-                <span class="ccc-stage-pill">{opportunity.status}</span>
-              </td>
+              <td><CopyableCode value={opportunity.opportunityId} /></td>
+              <td>{opportunity.status}</td>
               <td title={opportunity.fitExplanation ?? undefined}>
-                <strong>{Math.round(opportunity.fitScore ?? 0)}%</strong>
+                {Math.round(opportunity.fitScore ?? 0)} / 100
               </td>
             </tr>
           {/each}
 
           {#if ranked.unscored.length > 0}
+            <!-- Lane G item 1 — unscored divider: Intent not yet set / the
+                 scorer never ran. Never rendered as score 0. -->
             <tr class="ccc-opportunities-divider">
-              <td colspan="3">Discovered / Sensed — {ranked.unscored.length} opportunit{ranked.unscored.length === 1 ? "y" : "ies"}</td>
+              <td colspan="4">Unscored — {ranked.unscored.length} opportunit{ranked.unscored.length === 1 ? "y" : "ies"}</td>
             </tr>
             {#each ranked.unscored as opportunity (opportunity.opportunityId)}
               <tr>
@@ -163,17 +164,19 @@
                   </a><br />
                   <span class="ccc-empty">{opportunity.title}</span>
                 </th>
-                <td>
-                  <span class="ccc-stage-pill">{opportunity.status}</span>
-                </td>
-                <td><span class="ccc-empty">Evaluating</span></td>
+                <td><CopyableCode value={opportunity.opportunityId} /></td>
+                <td>{opportunity.status}</td>
+                <td>Not scored</td>
               </tr>
             {/each}
           {/if}
 
           {#if ranked.excluded.length > 0}
+            <!-- Lane G item 1 — excluded divider: employer-conflict matches
+                 from Lane F1's scorer, always shown with their exclusion
+                 explanation, never hidden behind a tooltip only. -->
             <tr class="ccc-opportunities-divider">
-              <td colspan="3">Excluded — {ranked.excluded.length} opportunit{ranked.excluded.length === 1 ? "y" : "ies"}</td>
+              <td colspan="4">Excluded — {ranked.excluded.length} opportunit{ranked.excluded.length === 1 ? "y" : "ies"}</td>
             </tr>
             {#each ranked.excluded as opportunity (opportunity.opportunityId)}
               <tr class="ccc-opportunities-row--excluded">
@@ -183,11 +186,10 @@
                   </a><br />
                   <span class="ccc-empty">{opportunity.title}</span>
                 </th>
+                <td><CopyableCode value={opportunity.opportunityId} /></td>
+                <td>{opportunity.status}</td>
                 <td>
-                  <span class="ccc-stage-pill">{opportunity.status}</span>
-                </td>
-                <td>
-                  <div>{Math.round(opportunity.fitScore ?? 0)}%</div>
+                  <div>{Math.round(opportunity.fitScore ?? 0)} / 100</div>
                   <div class="ccc-empty">{opportunity.fitExplanation}</div>
                 </td>
               </tr>

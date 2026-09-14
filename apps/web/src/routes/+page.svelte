@@ -246,7 +246,7 @@
   <header class="ccc-page-header">
     <h1 class="ccc-page-header__title">Command</h1>
     <p class="ccc-page-header__meta">
-      Ambient Accountability Loop — proactive Next Best Actions and enterprise pursuit status.
+      Session orientation and the cross-entity roll-up.
     </p>
   </header>
 
@@ -255,39 +255,17 @@
   {:else if freshInstall}
     <!-- FR-CMD-5 — one centered empty state, not four empty panels. -->
     <EmptyState
-      title="Ambient Loop Initialized"
-      description="No active opportunities or sensed recruiter threads need attention yet. New leads and incoming messages will surface actions here automatically."
+      title="Nothing here yet"
+      description="No opportunities and no operations exist yet. Create the first opportunity from an evidence reference to get started."
     >
       <Button variant="primary" onclick={() => (window.location.href = "/opportunities")}>
-        View Opportunities Pipeline
+        Go to Opportunities
       </Button>
     </EmptyState>
   {:else}
-    <!-- 1. Next Best Actions (The Sovereign Ambient Rail) -->
-    <Panel title="Next Best Actions" meta="Proactive Ambient Suggestions">
-      {#if needsAttention.length === 0 && overdueApps.length === 0}
-        <p class="ccc-empty">All pipeline SLAs and follow-ups are up to date. Next actions will trigger as new evidence is sensed.</p>
-      {:else}
-        {#if needsAttention.length > 0}
-          <ul class="ccc-needs-attention">
-            {#each needsAttention as item (item.kind + item.id)}
-              <li class="ccc-needs-attention__item" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 0.75rem;">
-                  <Badge tone={NEEDS_ATTENTION_TONE[item.kind]}>{item.reason}</Badge>
-                  <a href={item.href}><strong>{item.title}</strong></a>
-                </div>
-                <Button variant="secondary">Dispatch Action</Button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      {/if}
-    </Panel>
-
-    <!-- 2. Evidence & Projection Freshness -->
     <Panel
-      title="System Freshness"
-      meta="4 real projections · Mímir Epistemic Overlay"
+      title="Freshness"
+      meta="4 real projections · Operation.freshness excluded (PRD §4)"
     >
       <div class="ccc-freshness-strip">
         <div class="ccc-freshness-strip__item">
@@ -312,9 +290,46 @@
         </div>
       </div>
       {#if relError}
+        <!-- FR-CMD-1 — Relationships has no rendered section of its own on
+             this page (it is loaded only for freshness, per the FR-CMD-2
+             supervisor decision), so its independent failure surfaces here,
+             inline, rather than silently degrading the strip's
+             Relationships tag to "unavailable" with no explanation. The
+             other three freshness tags above are unaffected. -->
         <div style="margin-top: 0.75rem">
           <ErrorBanner error={relError} />
         </div>
+      {/if}
+    </Panel>
+
+    <Panel title="Needs Attention" meta={`${needsAttention.length} item(s)`}>
+      {#if needsAttention.length === 0 && overdueApps.length === 0}
+        <p class="ccc-empty">Nothing needs attention right now.</p>
+      {:else}
+        {#if needsAttention.length > 0}
+          <ul class="ccc-needs-attention">
+            {#each needsAttention as item (item.kind + item.id)}
+              <li class="ccc-needs-attention__item">
+                <Badge tone={NEEDS_ATTENTION_TONE[item.kind]}>{item.reason}</Badge>
+                <a href={item.href}>{item.title}</a>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if overdueApps.length > 0}
+          <!-- FR-CMD-4 — unfireable against live data today (nextActionAt is
+               permanently null); this block only renders once BE-6 lands
+               and a real due date exists. -->
+          <p class="ccc-empty" style="margin-top: 0.75rem">Overdue next actions</p>
+          <ul class="ccc-needs-attention">
+            {#each overdueApps as application (application.applicationId)}
+              <li class="ccc-needs-attention__item">
+                <Badge tone="danger">overdue</Badge>
+                <a href={`/applications/${application.applicationId}`}>{application.nextAction ?? application.applicationId}</a>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       {/if}
     </Panel>
 

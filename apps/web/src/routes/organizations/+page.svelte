@@ -35,7 +35,7 @@
   const filtered = $derived(
     sortOrganizations(filterOrganizations(organizations, search), sortBy),
   );
-  const emptyState = $derived(organizationsEmptyState(search));
+  const emptyState = $derived(organizationsEmptyState(search.trim() !== ""));
 
   async function refresh(): Promise<void> {
     saveConfig(config);
