@@ -30,3 +30,14 @@ explicit approval of that PR.
 
 ADR-014 (+ amendment local Svelte glass) under
 `~/docs/30-projects/career-command-center/`.
+
+## Incident note — 2026-09-14: the sense pipeline had never run
+
+All four CCC n8n workflows (Gmail loop, LinkedIn Zen stream, Mail Corpus ingest, Topic
+discovery) were authored 2026-09-11 with `$` stripped from every expression and failed on
+100% of executions; nothing produced tasks into Odin's Runes. Fixed via the n8n API; the
+Gmail loop stays **deactivated** (it only commits a synthetic evidence row). The public
+`https://n8n.ravenhelm.dev/webhook/*` path returns 307 to oauth2 — webhook producers must
+use an unauthenticated path (traefik-config skip-auth, pending). The owed-reply bridge is
+`cli.owed_replies` (see its docstring); it runs Mac-side via `op run` until a scheduler is
+ruled. Full report: `~/docs/30-projects/career-command-center/REPORT-2026-09-14-ccc-sense-pipeline-and-odinsrunes-bridge.md`.

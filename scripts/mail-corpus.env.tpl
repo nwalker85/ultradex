@@ -21,3 +21,10 @@ MAIL_CLICKHOUSE_PASSWORD=op://ravenmask/ClickHouse gmailnwalker85 - Vakr/passwor
 # not the tailnet IP. Same model and window discipline as audio-app.
 EMBED_API_URL=http://odin.ravenmask.net:18090
 EMBED_MODEL=nomic-embed-text
+
+# Owed replies -> Odin's Runes (cli.owed_replies). The operator's own addresses
+# drive the reply/owed signal; without them the ranker refuses to run.
+MAIL_OWNER_ADDRESSES=nwalker85@gmail.com
+CCC_API_URL=http://10.10.20.101:30800
+ULTRADEX_API_TOKEN=op://ravenmask/Ultradex API Token - CCC vakr/credential
+ODINSRUNES_API_URL=http://10.10.20.102:8765
