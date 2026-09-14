@@ -41,6 +41,47 @@ jobs:
               ;;
           esac
 
+      # ui-design-system: see nate/forge-toolkit templates/_shared/ui-design-system-check.md (docket 697/698)
+      - name: Validate ui-design-system
+        working-directory: apps/web
+        env:
+          UI_STACK: svelte
+          UI_CANON_PKG: "@ravenhelm/ui-svelte"
+          UI_CANON_MIN_VERSION: "0.1.0"
+          UI_SHELL_IMPORT: "AppShell"
+          UI_CSS_BASELINE: "67"
+          UI_TOKEN_DENYLIST: ""
+          UI_ADOPTION_PENDING: "false"
+        run: |
+          set -euo pipefail
+          fail() { echo "FAIL ui-design-system: $1"; echo "FIX: $2"; exit 1; }
+          warn_or_fail() {
+            if [ "${UI_ADOPTION_PENDING:-false}" = "true" ]; then
+              echo "WARN ui-design-system: $1 (adoption pending, tracked - see AGENTS.md)"
+              echo "FIX: $2"
+            else
+              fail "$1" "$2"
+            fi
+          }
+          grep -q "\"$UI_CANON_PKG\"" package.json \
+            || warn_or_fail "rule-1" "add a real dependency on $UI_CANON_PKG (>= $UI_CANON_MIN_VERSION) to package.json"
+          SHELL_SEARCH_DIRS=""
+          for d in src app; do [ -d "$d" ] && SHELL_SEARCH_DIRS="$SHELL_SEARCH_DIRS $d"; done
+          if [ -z "$SHELL_SEARCH_DIRS" ]; then
+            warn_or_fail "rule-2" "compose $UI_SHELL_IMPORT from $UI_CANON_PKG in your root layout"
+          else
+            grep -rlE "$UI_SHELL_IMPORT" --include="*.tsx" --include="*.ts" --include="*.svelte" $SHELL_SEARCH_DIRS 2>/dev/null | grep -q . \
+              || warn_or_fail "rule-2" "compose $UI_SHELL_IMPORT from $UI_CANON_PKG in your root layout"
+          fi
+          TOTAL=$(find . -name '*.css' -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' -not -path '*/.svelte-kit/*' -not -path '*/components/local/*' -print0 \
+            | xargs -0 cat 2>/dev/null \
+            | grep -Ev '^[[:space:]]*$' | grep -Ev '^[[:space:]]*[{}][[:space:]]*$' | grep -Ev '^[[:space:]]*(/\*|\*/|\*|//)' \
+            | wc -l | tr -d ' '; true)
+          echo "ui-design-system: bespoke CSS lines=$TOTAL (ratchet=$UI_CSS_BASELINE, target=150)"
+          [ "$TOTAL" -le "$UI_CSS_BASELINE" ] \
+            || fail "rule-3" "bespoke CSS grew past the $UI_CSS_BASELINE-line ratchet (target 150) - open a PR against $UI_CANON_PKG instead of adding app CSS"
+          echo "ui-design-system: PASS"
+
   # ------------------------------------------------------------------ #
   # Every pull request must name a Linear issue.
   #

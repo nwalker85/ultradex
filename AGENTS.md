@@ -8,6 +8,8 @@ explicit approval of that PR.
 - Career Director product is **`apps/web`** (Svelte local container), not Obsidian.
 - UI primitives: workspace package `@ravenhelm/ui-svelte` (canonical tree also at
   `~/src/platforms/ravenhelm/libraries/ravenhelm-ui-svelte`).
+- UI: this repo uses @ravenhelm/ui-svelte for every shell surface; bespoke chrome
+  is a library PR, not app CSS; gated by forgejo-policy ui-design-system.
 - Obsidian plugin path is **deprecated** — see `integrations/obsidian-ultradex/DEPRECATED.md`.
 - ML stays on Python workers; do not add ML libraries to the glass.
 
