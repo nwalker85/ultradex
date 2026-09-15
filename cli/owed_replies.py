@@ -97,8 +97,10 @@ def _hub_error(body: dict) -> str:
     return " ".join(text.split())[:120]
 
 
-def existing_hub_tasks(client: httpx.Client, *, base_url: str, headers: dict) -> dict[str, str]:
-    """Hub task id -> status for every task this producer has posted."""
+def existing_hub_tasks(client: httpx.Client, *, base_url: str, headers: dict) -> dict[str, dict]:
+    """Hub task id -> {"status", "description_source"} for every task this
+    producer has posted. `description_source` is `None` when the hub has
+    never recorded one (an older task, or one the API hasn't tagged)."""
     response = client.get(
         base_url.rstrip("/") + "/api/tasks",
         params={"source": TASK_SOURCE, "limit": 1000},
@@ -109,7 +111,10 @@ def existing_hub_tasks(client: httpx.Client, *, base_url: str, headers: dict) ->
         print(f"refused: hub tasks read -> HTTP {response.status_code}", file=sys.stderr)
         sys.exit(3)
     return {
-        str(item.get("action_id") or item.get("id")): str(item.get("status") or "")
+        str(item.get("action_id") or item.get("id")): {
+            "status": str(item.get("status") or ""),
+            "description_source": item.get("description_source"),
+        }
         for item in response.json().get("items", [])
         if str(item.get("action_id") or item.get("id")).startswith(TASK_ID_PREFIX)
     }
@@ -175,7 +180,9 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
                 else:
                     failed.append(f"{payload['id']}: HTTP {response.status_code} {_hub_error(body)}".strip())
             for patch in plan.update:
-                body_out = {"title": patch["title"], "description": patch["description"]}
+                body_out: dict = {"title": patch["title"], "description_source": TASK_SOURCE}
+                if not patch.get("description_kept"):
+                    body_out["description"] = patch["description"]
                 response = http.patch(hub_url.rstrip("/") + "/api/tasks/" + patch["id"], json=body_out,
                                       headers=hub_headers, timeout=20.0)
                 body = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
@@ -190,7 +197,10 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         "surfaced": sum(1 for r in results if r.surfaced),
         "owed": sum(1 for r in results if r.is_owed_reply),
         "to_create": [p["title"] for p in plan.create],
-        "to_update": [{"id": u["id"], "title": u["title"]} for u in plan.update],
+        "to_update": [
+            {"id": u["id"], "title": u["title"], "description_kept": u.get("description_kept", False)}
+            for u in plan.update
+        ],
         "skipped_existing": list(plan.skipped_existing),
         "ignored_arrivals": len(plan.ignored),
         "posted": posted,
@@ -208,7 +218,8 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         for payload in plan.create:
             print(f"  + {payload['id']}  [{payload['priority']}]  {payload['title']}")
         for patch in plan.update:
-            print(f"  ~ {patch['id']}  {patch['title']}")
+            suffix = "  (description kept: operator-owned)" if patch.get("description_kept") else ""
+            print(f"  ~ {patch['id']}  {patch['title']}{suffix}")
         for line in failed:
             print(f"  ! {line}")
     return 1 if failed else 0

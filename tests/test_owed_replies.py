@@ -116,14 +116,66 @@ def test_task_payload_is_keyed_on_the_message_and_carries_the_explanation():
     assert payload["context_snippet"] == "owed reply: known contact, thread tail, 7d"
     assert payload["raw_metadata"]["contact_matched_by"] == "name"
     assert payload["raw_metadata"]["mode"] == MODE_OWED_REPLY
+    # RAV-1465: the description is a human paragraph, not the ranker's scores.
+    assert payload["description"] == (
+        'Michelle Foster Earle wrote on Sep 7 — "Re: independent verification". '
+        "You have not replied in 7 days."
+    )
+    assert "Ranker:" not in payload["description"]
+    assert payload["description_source"] == "ccc_email"
 
 
 def test_task_payload_falls_back_to_display_name_then_address():
     p = task_payload(_result(), contact=None, company=None, matched_by=None, display_name="Michelle Earle")
     assert p["title"].startswith("Reply to Michelle Earle:")
     assert p["contact_id"] is None
+    assert p["description"].startswith('Michelle Earle wrote on Sep 7')
     p = task_payload(_result(subject="  "), contact=None, company=None, matched_by=None, display_name=None)
     assert p["title"] == "Reply to michelle@omnisure.com: (no subject)"
+    assert '"(no subject)"' in p["description"]
+
+
+def test_description_names_the_thread_contact_when_reached_via_thread():
+    directory = CccContactDirectory.from_rows(ROWS)
+    directory.observe([_message()])
+    result = _result(from_addr="mark@omnisure.com")
+    contact = directory.lookup(["michelle@omnisure.com"])["michelle@omnisure.com"]
+    p = task_payload(result, contact=contact, company="OmniSure", matched_by="thread", display_name="Mark Batten")
+    assert p["description"] == (
+        'Mark Batten wrote on Sep 7 — "Re: independent verification". You have not replied in 7 days. '
+        "The thread is with Michelle Foster Earle (OmniSure)."
+    )
+
+
+def test_description_names_the_thread_contact_without_a_company():
+    directory = CccContactDirectory.from_rows(ROWS)
+    directory.observe([_message()])
+    result = _result(from_addr="wesley@example.com")
+    contact = directory.lookup(["michelle@omnisure.com"])["michelle@omnisure.com"]
+    p = task_payload(result, contact=contact, company=None, matched_by="thread", display_name="Mark Batten")
+    assert "The thread is with Michelle Foster Earle." in p["description"]
+    assert "(" not in p["description"].split("The thread is with")[1]
+
+
+def test_description_names_a_cold_open_when_the_explanation_says_so():
+    p = task_payload(_result(explanation="cold open — you have never replied in thread t1; score = 60"),
+                      contact=None, company=None, matched_by=None, display_name="Michelle Earle")
+    assert p["description"].endswith("You have never replied in this thread.")
+
+
+def test_description_names_an_earlier_reply_when_the_explanation_says_so():
+    p = task_payload(_result(explanation="you have sent a message in thread t1 before; score = 60"),
+                      contact=None, company=None, matched_by=None, display_name="Michelle Earle")
+    assert p["description"].endswith("You last replied earlier in this thread.")
+
+
+def test_description_for_several_unanswered_messages_names_the_count_and_debt_start():
+    result = _result(unanswered_count=3, debt_since=NOW - timedelta(days=10), subject="Re: proposal")
+    p = task_payload(result, contact=None, company=None, matched_by=None, display_name="Michelle Earle")
+    assert p["description"] == (
+        'Michelle Earle followed up on Sep 7 — "Re: proposal". '
+        "3 messages have gone unanswered since Sep 4."
+    )
 
 
 # --- plan ------------------------------------------------------------------
@@ -248,6 +300,44 @@ def test_plan_still_accepts_a_bare_set_of_ids_and_treats_them_as_open():
     new = _result(message_id="m-mark", thread_id="t1", from_addr="mark@omnisure.com")
     plan = plan_sync([new, old], directory=directory, existing_task_ids={"ccc-email-m-michelle"})
     assert plan.create == () and [u["id"] for u in plan.update] == ["ccc-email-m-michelle"]
+    assert plan.update[0]["description_kept"] is False
+    assert "description" in plan.update[0]
+
+
+def test_plan_accepts_a_mapping_of_status_and_description_source_the_new_shape():
+    """The hub-contract shape added in amp-live-aid: id -> {"status",
+    "description_source"}. `_normalize_existing` must keep accepting the two
+    older shapes too (bare iterable, id -> bare status string)."""
+    directory = CccContactDirectory.from_rows(ROWS)
+    old = _result(message_id="m-michelle", thread_id="t1", surfaced=False, mode=MODE_ARRIVAL, score=5)
+    new = _result(message_id="m-mark", thread_id="t1", from_addr="mark@omnisure.com")
+    plan = plan_sync(
+        [new, old], directory=directory,
+        existing_task_ids={"ccc-email-m-michelle": {"status": "triage", "description_source": "ccc_email"}},
+    )
+    assert plan.create == () and [u["id"] for u in plan.update] == ["ccc-email-m-michelle"]
+    assert plan.update[0]["description_kept"] is False
+    assert "description" in plan.update[0]
+
+
+def test_plan_never_overwrites_a_description_nate_has_edited():
+    """2026-09-15 ruling: Nate's edits win. The sync plan only rewrites a
+    description it wrote and he has not touched — so an open task whose
+    `description_source` is his own user id (anything but None/"ccc_email")
+    gets its title updated but keeps its description."""
+    directory = CccContactDirectory.from_rows(ROWS)
+    old = _result(message_id="m-michelle", thread_id="t1", surfaced=False, mode=MODE_ARRIVAL, score=5)
+    new = _result(message_id="m-mark", thread_id="t1", from_addr="mark@omnisure.com", subject="Re: Consulting")
+    plan = plan_sync(
+        [new, old], directory=directory,
+        existing_task_ids={"ccc-email-m-michelle": {"status": "triage", "description_source": "user-nate"}},
+    )
+    assert plan.create == ()
+    update = plan.update[0]
+    assert update["id"] == "ccc-email-m-michelle"
+    assert update["title"] == "Reply to mark@omnisure.com: Re: Consulting"  # title always updates
+    assert "description" not in update
+    assert update["description_kept"] is True
 
 
 def test_task_payload_names_the_sender_and_links_the_known_contact_reached_via_the_thread():
@@ -275,6 +365,22 @@ def test_task_payload_for_a_relayed_direct_message_says_where_to_reply():
     assert p["contact_name"] == "Paul Gibbons"
     assert "https://substack.com/inbox" in p["description"]
     assert p["raw_metadata"]["relay"] == "substack"
+    # RAV-1465: no scores in the description, and no excerpt when the subject
+    # carries nothing beyond Substack's own boilerplate.
+    assert p["description"] == "Paul Gibbons sent you a direct message on Substack on Sep 7. Reply at https://substack.com/inbox."
+    assert p["description_source"] == "ccc_email"
+
+
+def test_task_payload_for_a_relayed_direct_message_carries_an_excerpt_when_the_subject_has_one():
+    directory = CccContactDirectory.from_rows(ROWS)
+    result = _result(message_id="m-dm", thread_id="t-dm", from_addr="no-reply@substack.com",
+                     subject="💬 New message from Paul Gibbons: loved your last post",
+                     contact_id="relay:substack", contact_name="Paul Gibbons", relay="substack")
+    p = plan_sync([result], directory=directory, existing_task_ids=()).create[0]
+    assert p["description"] == (
+        'Paul Gibbons sent you a direct message on Substack on Sep 7: "loved your last post". '
+        "Reply at https://substack.com/inbox."
+    )
 
 
 def test_observing_and_union_corpora_forward_thread_history_and_register_names():

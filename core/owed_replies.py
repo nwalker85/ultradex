@@ -282,6 +282,67 @@ def _priority(result: MailRankResult) -> str:
     return "low"
 
 
+def _fmt_date(ts) -> str:
+    """`datetime(2026, 9, 14, ...)` -> `"Sep 14"`."""
+    return f"{ts.strftime('%b')} {ts.day}"
+
+
+def _relay_excerpt(subject: str, who: str) -> str | None:
+    """The bit of the subject beyond Substack's own "New message from X"
+    boilerplate — `None` when the subject carries nothing else."""
+    stripped = subject.replace("💬", "").strip()
+    prefix = f"New message from {who}"
+    if stripped.lower() == prefix.lower():
+        return None
+    if stripped.lower().startswith(prefix.lower()):
+        rest = stripped[len(prefix):].strip(" :-—")
+        return rest or None
+    return stripped or None
+
+
+def _describe(
+    result: MailRankResult,
+    *,
+    contact: KnownContact | None,
+    company: str | None,
+    matched_by: str | None,
+    display_name: str | None,
+    who: str,
+    subject: str,
+) -> str:
+    """A human paragraph: who wrote, what they asked, the thread's history.
+    No scores, no factor names — that stays in `context_snippet`."""
+    if result.relay:
+        channel = result.relay.capitalize()
+        date_str = _fmt_date(result.ts)
+        url = RELAY_REPLY_URLS.get(result.relay, "")
+        excerpt = _relay_excerpt(subject, who)
+        if excerpt:
+            return f'{who} sent you a direct message on {channel} on {date_str}: "{excerpt}". Reply at {url}.'
+        return f"{who} sent you a direct message on {channel} on {date_str}. Reply at {url}."
+
+    date_str = _fmt_date(result.ts)
+    if result.unanswered_count and result.unanswered_count > 1:
+        debt_date = _fmt_date(result.debt_since) if result.debt_since else date_str
+        n = result.unanswered_count
+        return (
+            f'{who} followed up on {date_str} — "{subject}". '
+            f"{n} messages have gone unanswered since {debt_date}."
+        )
+
+    via_thread = contact is not None and matched_by == "thread"
+    age = int(round(result.age_days))
+    sentence = f'{who} wrote on {date_str} — "{subject}". You have not replied in {age} day{"s" if age != 1 else ""}.'
+    if via_thread:
+        suffix = f" ({company})" if company else ""
+        sentence += f" The thread is with {contact.name}{suffix}."  # type: ignore[union-attr]
+    if "cold open" in result.explanation:
+        sentence += " You have never replied in this thread."
+    elif "sent a message in thread" in result.explanation:
+        sentence += " You last replied earlier in this thread."
+    return sentence
+
+
 def task_payload(
     result: MailRankResult,
     *,
@@ -297,9 +358,12 @@ def task_payload(
     person; when a colleague writes into a contact's thread they differ, and
     `contact_matched_by = "thread"` says so. A relayed direct message names the
     counterparty and says where the reply happens.
+
+    The description is a human paragraph built from the thread's context —
+    who wrote, what they asked, the thread's history — never the ranker's
+    scores or factor names; that stays in `context_snippet` as provenance.
     """
     subject = result.subject.strip() or "(no subject)"
-    age = int(round(result.age_days))
     if result.relay:
         who = result.contact_name or display_name or result.from_addr
         channel = result.relay.capitalize()
@@ -308,11 +372,11 @@ def task_payload(
         return {
             "id": task_id_for(result.message_id),
             "title": f"Reply on {channel} to {who}: {subject}",
-            "description": (
-                f"{who} sent you a direct message on {channel} {age} day{'s' if age != 1 else ''} ago "
-                f"and the mailbox cannot see whether you answered. Reply there: {url}\n"
-                f"Ranker: {result.explanation}"
+            "description": _describe(
+                result, contact=contact, company=company, matched_by=matched_by,
+                display_name=display_name, who=who, subject=subject,
             ),
+            "description_source": TASK_SOURCE,
             "assignee": "Nate",
             "status": "pending",
             "priority": _priority(result),
@@ -342,12 +406,11 @@ def task_payload(
     return {
         "id": task_id_for(result.message_id),
         "title": f"Reply to {who}: {subject}",
-        "description": (
-            f"{who} has had the last word on this thread for {age} day{'s' if age != 1 else ''}. "
-            + (f"The thread is with {contact.name}"  # type: ignore[union-attr]
-               + (f" ({company})" if company else "") + ". " if via_thread else "")
-            + f"Ranker: {result.explanation}"
+        "description": _describe(
+            result, contact=contact, company=company, matched_by=matched_by,
+            display_name=display_name, who=who, subject=subject,
         ),
+        "description_source": TASK_SOURCE,
         "assignee": "Nate",
         "status": "pending",
         "priority": _priority(result),
@@ -376,7 +439,8 @@ class SyncPlan:
     create: tuple[dict[str, Any], ...]
     skipped_existing: tuple[str, ...]
     ignored: tuple[str, ...]  # surfaced but not owed
-    # PATCH bodies for tasks whose thread moved on: {"id", "title", "description", "raw_metadata"}
+    # PATCH bodies for tasks whose thread moved on: {"id", "title", "raw_metadata",
+    # "description_kept"} plus "description" when the ranker still owns it.
     update: tuple[dict[str, Any], ...] = ()
 
 
@@ -399,28 +463,52 @@ def _payload_for(result: MailRankResult, directory: CccContactDirectory) -> dict
     )
 
 
+def _normalize_existing(
+    existing_task_ids: Iterable[str] | Mapping[str, str] | Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Accepts, and keeps accepting:
+
+    - a bare iterable of hub task ids (all treated as open, operator-untouched)
+    - a mapping id -> hub status string (the pre-RAV-1465 shape)
+    - a mapping id -> {"status": str, "description_source": str | None}
+    """
+    if isinstance(existing_task_ids, Mapping):
+        normalized: dict[str, dict[str, Any]] = {}
+        for task_id, value in existing_task_ids.items():
+            if isinstance(value, Mapping):
+                normalized[task_id] = {
+                    "status": str(value.get("status") or ""),
+                    "description_source": value.get("description_source"),
+                }
+            else:
+                normalized[task_id] = {"status": str(value or ""), "description_source": None}
+        return normalized
+    return {task_id: {"status": "", "description_source": None} for task_id in existing_task_ids}
+
+
 def plan_sync(
     results: Sequence[MailRankResult],
     *,
     directory: CccContactDirectory,
-    existing_task_ids: Iterable[str] | Mapping[str, str],
+    existing_task_ids: Iterable[str] | Mapping[str, str] | Mapping[str, Mapping[str, Any]],
     include_arrivals: bool = False,
 ) -> SyncPlan:
     """Decide what to post. Owed replies only unless `include_arrivals`.
 
-    `existing_task_ids` is either a bare iterable of hub task ids (all treated
-    as open) or a mapping id -> hub status, which lets the plan tell an open
-    task from a closed one when a thread's tail moves.
+    `existing_task_ids` is a bare iterable of hub task ids (all treated as
+    open), a mapping id -> hub status, or a mapping id -> {"status",
+    "description_source"} — see `_normalize_existing`. The status lets the
+    plan tell an open task from a closed one when a thread's tail moves;
+    `description_source` lets it tell Nate's edit from the ranker's own last
+    write, so an operator-owned description is never overwritten (2026-09-15
+    ruling: Nate's edits win).
     """
-    if isinstance(existing_task_ids, Mapping):
-        existing: dict[str, str] = {k: (v or "") for k, v in existing_task_ids.items()}
-    else:
-        existing = {task_id: "" for task_id in existing_task_ids}
+    existing = _normalize_existing(existing_task_ids)
     # thread -> the open hub task keyed on an OLDER message of that thread
     open_task_by_thread: dict[str, str] = {}
     for result in results:
         task_id = task_id_for(result.message_id)
-        if task_id in existing and existing[task_id].lower() not in CLOSED_STATUSES:
+        if task_id in existing and existing[task_id]["status"].lower() not in CLOSED_STATUSES:
             open_task_by_thread.setdefault(result.thread_id, task_id)
 
     create: list[dict[str, Any]] = []
@@ -440,12 +528,17 @@ def plan_sync(
         payload = _payload_for(result, directory)
         older = open_task_by_thread.get(result.thread_id)
         if older is not None and older != task_id:
-            update.append({
+            description_source = existing[older]["description_source"]
+            operator_owned = description_source not in (None, TASK_SOURCE)
+            patch: dict[str, Any] = {
                 "id": older,
                 "title": payload["title"],
-                "description": payload["description"],
                 "raw_metadata": {**payload["raw_metadata"], "source_ref": result.message_id},
-            })
+                "description_kept": operator_owned,
+            }
+            if not operator_owned:
+                patch["description"] = payload["description"]
+            update.append(patch)
             continue
         create.append(payload)
     return SyncPlan(create=tuple(create), skipped_existing=tuple(skipped),
