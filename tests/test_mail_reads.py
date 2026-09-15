@@ -296,3 +296,34 @@ def test_clickhouse_thread_tails_use_limit_1_by_thread_id():
     assert sql.index("LIMIT 1 BY thread_id") < sql.index("LIMIT {limit:UInt32}")
     assert client.calls[0]["params"]["param_limit"] == "250"
     assert [m.message_id for m in messages] == ["m1"]
+
+
+# --------------------------------------------------------------------------
+# thread history — the read that makes a debt datable (2026-09-15)
+# --------------------------------------------------------------------------
+
+
+def test_in_memory_thread_messages_returns_every_message_of_the_named_threads_oldest_first():
+    corpus = InMemoryMailCorpus(messages=[
+        MailMessage(message_id="b", thread_id="t1", ts=NOW - timedelta(days=1), from_addr="x@a.example"),
+        MailMessage(message_id="a", thread_id="t1", ts=NOW - timedelta(days=9), from_addr="y@a.example"),
+        MailMessage(message_id="c", thread_id="t2", ts=NOW, from_addr="z@a.example"),
+    ])
+    assert [m.message_id for m in corpus.thread_messages(["t1"])] == ["a", "b"]
+    assert corpus.thread_messages([]) == ()
+
+
+def test_clickhouse_thread_messages_binds_the_thread_ids_as_an_array():
+    client = FakeClickHouseClient([FakeResponse(200, '{"message_id":"m1","thread_id":"t1","ts":"2026-08-20 15:30:00.000"}\n')])
+    corpus = ClickHouseMailCorpus(client=client)
+
+    messages = corpus.thread_messages(["t2", "t1"])
+
+    sql = client.calls[0]["sql"]
+    assert "FROM messages FINAL" in sql
+    assert "thread_id IN {thread_ids:Array(String)}" in sql
+    assert "ORDER BY ts ASC, message_id ASC" in sql
+    assert client.calls[0]["params"]["param_thread_ids"] == "['t1','t2']"
+    assert [m.message_id for m in messages] == ["m1"]
+    assert corpus.thread_messages([]) == ()
+    assert len(client.calls) == 1

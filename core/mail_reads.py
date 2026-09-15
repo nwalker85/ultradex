@@ -111,6 +111,14 @@ class MailCorpus(Protocol):
         outside the range are absent entirely, which is what bounds the sweep.
         """
 
+    def thread_messages(self, thread_ids: Sequence[str]) -> Sequence[MailMessage]:
+        """Every message of the named threads, oldest first.
+
+        The read that dates a debt and names who a thread is with. Independent
+        of the arrival window and its row cap on purpose: an owed thread's
+        earlier messages are exactly the ones a newest-first cap drops.
+        """
+
     def threads_with_message_from(
         self,
         thread_ids: Sequence[str],
@@ -180,6 +188,14 @@ class InMemoryMailCorpus:
         ordered = [message for message in tails.values() if message.ts >= since]
         ordered.sort(key=lambda m: (m.ts, m.message_id), reverse=True)
         return tuple(ordered[:limit])
+
+    def thread_messages(self, thread_ids: Sequence[str]) -> Sequence[MailMessage]:
+        scope = {tid for tid in thread_ids if tid}
+        if not scope:
+            return ()
+        rows = [m for m in self.messages if m.thread_id in scope]
+        rows.sort(key=lambda m: (m.ts, m.message_id))
+        return tuple(rows)
 
     def threads_with_message_from(
         self,
@@ -378,6 +394,21 @@ class ClickHouseMailCorpus:
                 "limit": str(int(limit)),
             },
         )
+        return tuple(row_to_message(row) for row in rows)
+
+    def thread_messages(self, thread_ids: Sequence[str]) -> Sequence[MailMessage]:
+        scope = sorted({tid for tid in thread_ids if tid})
+        if not scope:
+            return ()
+        sql = (
+            "SELECT message_id, thread_id, toString(ts) AS ts_text, from_addr, from_name, "
+            "to_addrs, cc_addrs, subject, labels, snippet "
+            "FROM messages FINAL "
+            "WHERE thread_id IN {thread_ids:Array(String)} "
+            "ORDER BY ts ASC, message_id ASC "
+            "FORMAT JSONEachRow"
+        )
+        rows = self._query(sql, {"thread_ids": _clickhouse_array_literal(scope)})
         return tuple(row_to_message(row) for row in rows)
 
     def threads_with_message_from(

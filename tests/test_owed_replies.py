@@ -132,11 +132,11 @@ def test_task_payload_falls_back_to_display_name_then_address():
 def test_plan_posts_owed_replies_only_skips_existing_and_ignores_arrivals():
     directory = CccContactDirectory.from_rows(ROWS)
     directory.observe([_message()])
-    results = [
-        _result(message_id="owed-new"),
-        _result(message_id="owed-old"),
-        _result(message_id="arrival", mode=MODE_ARRIVAL, score=60),
-        _result(message_id="gated", surfaced=False),
+    results = [  # one thread each: the ranker only ever owes one tail per thread
+        _result(message_id="owed-new", thread_id="t-new"),
+        _result(message_id="owed-old", thread_id="t-old"),
+        _result(message_id="arrival", thread_id="t-arrival", mode=MODE_ARRIVAL, score=60),
+        _result(message_id="gated", thread_id="t-gated", surfaced=False),
     ]
     plan = plan_sync(results, directory=directory, existing_task_ids={"ccc-email-owed-old"})
     assert [p["id"] for p in plan.create] == ["ccc-email-owed-new"]
@@ -208,3 +208,82 @@ def test_a_person_shaped_dex_row_without_company_or_title_is_not_a_person():
     directory = CccContactDirectory.from_rows([ContactRow(id="x", name="Abel Moreno")])
     directory.observe([_message(from_addr="abel@events.example", from_name="Abel Moreno")])
     assert directory.lookup(["abel@events.example"]) == {}
+
+
+# --- the thread's task follows the thread's tail (2026-09-15) ---------------
+
+
+def test_plan_updates_the_threads_open_task_instead_of_raising_a_second_one():
+    """Mark replied in Michelle's thread. One action item per owed thread: the
+    existing open task is retitled to the new tail, not duplicated."""
+    directory = CccContactDirectory.from_rows(ROWS)
+    directory.observe([_message(message_id="m-mark", from_addr="mark@omnisure.com", from_name="Mark Batten")])
+    old = _result(message_id="m-michelle", thread_id="t1", surfaced=False, mode=MODE_ARRIVAL, score=5)
+    new = _result(message_id="m-mark", thread_id="t1", from_addr="mark@omnisure.com", subject="Re: Consulting",
+                  contact_id="c-michelle", contact_name="Michelle Foster Earle")
+
+    plan = plan_sync([new, old], directory=directory, existing_task_ids={"ccc-email-m-michelle": "triage"})
+
+    assert plan.create == ()
+    assert plan.skipped_existing == ()
+    assert [u["id"] for u in plan.update] == ["ccc-email-m-michelle"]
+    assert plan.update[0]["title"] == "Reply to Mark Batten: Re: Consulting"
+    assert "Mark Batten" in plan.update[0]["description"]
+    assert plan.update[0]["raw_metadata"]["source_ref"] == "m-mark"
+
+
+def test_plan_raises_a_fresh_task_when_the_threads_old_task_is_closed():
+    directory = CccContactDirectory.from_rows(ROWS)
+    old = _result(message_id="m-michelle", thread_id="t1", surfaced=False, mode=MODE_ARRIVAL, score=5)
+    new = _result(message_id="m-mark", thread_id="t1", from_addr="mark@omnisure.com")
+    for closed in ("completed", "rejected", "withdrawn"):
+        plan = plan_sync([new, old], directory=directory, existing_task_ids={"ccc-email-m-michelle": closed})
+        assert [p["id"] for p in plan.create] == ["ccc-email-m-mark"], closed
+        assert plan.update == ()
+
+
+def test_plan_still_accepts_a_bare_set_of_ids_and_treats_them_as_open():
+    directory = CccContactDirectory.from_rows(ROWS)
+    old = _result(message_id="m-michelle", thread_id="t1", surfaced=False, mode=MODE_ARRIVAL, score=5)
+    new = _result(message_id="m-mark", thread_id="t1", from_addr="mark@omnisure.com")
+    plan = plan_sync([new, old], directory=directory, existing_task_ids={"ccc-email-m-michelle"})
+    assert plan.create == () and [u["id"] for u in plan.update] == ["ccc-email-m-michelle"]
+
+
+def test_task_payload_names_the_sender_and_links_the_known_contact_reached_via_the_thread():
+    directory = CccContactDirectory.from_rows(ROWS)
+    directory.observe([_message(message_id="m-mark", from_addr="mark@omnisure.com", from_name="Mark Batten")])
+    result = _result(message_id="m-mark", from_addr="mark@omnisure.com", subject="Re: Consulting",
+                     contact_id="c-michelle", contact_name="Michelle Foster Earle")
+    plan = plan_sync([result], directory=directory, existing_task_ids=())
+    p = plan.create[0]
+    assert p["title"] == "Reply to Mark Batten: Re: Consulting"
+    assert p["contact_id"] == "c-michelle"
+    assert p["contact_name"] == "Michelle Foster Earle"
+    assert p["organization_name"] == "OmniSure"
+    assert p["raw_metadata"]["contact_matched_by"] == "thread"
+
+
+def test_task_payload_for_a_relayed_direct_message_says_where_to_reply():
+    directory = CccContactDirectory.from_rows(ROWS)
+    result = _result(message_id="m-dm", thread_id="t-dm", from_addr="no-reply@substack.com",
+                     subject="💬 New message from Paul Gibbons", contact_id="relay:substack",
+                     contact_name="Paul Gibbons", relay="substack")
+    p = plan_sync([result], directory=directory, existing_task_ids=()).create[0]
+    assert p["title"] == "Reply on Substack to Paul Gibbons: New message from Paul Gibbons"
+    assert p["contact_id"] is None
+    assert p["contact_name"] == "Paul Gibbons"
+    assert "https://substack.com/inbox" in p["description"]
+    assert p["raw_metadata"]["relay"] == "substack"
+
+
+def test_observing_and_union_corpora_forward_thread_history_and_register_names():
+    from core.mail_reads import InMemoryMailCorpus
+    a = InMemoryMailCorpus(messages=[_message(message_id="m1", thread_id="t", from_addr="michelle@omnisure.com", from_name="Michelle Earle")])
+    b = InMemoryMailCorpus(messages=[_message(message_id="m2", thread_id="t", from_addr="mark@omnisure.com", from_name="Mark Batten", ts=NOW + timedelta(hours=1))])
+    directory = CccContactDirectory.from_rows(ROWS)
+    corpus = ObservingCorpus(UnionCorpus([a, b]), directory)
+    rows = corpus.thread_messages(["t"])
+    assert [m.message_id for m in rows] == ["m1", "m2"]
+    assert directory.display_names["michelle@omnisure.com"] == "Michelle Earle"
+    assert directory.lookup(["michelle@omnisure.com"])["michelle@omnisure.com"].contact_id == "c-michelle"

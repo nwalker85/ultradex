@@ -1214,13 +1214,16 @@ def test_unanswered_cold_opens_from_known_contacts_accrue_debt(db_session):
     owed = [r for r in ranked if r.is_owed_reply]
 
     # Only each thread's LAST word carries the debt — not every message in it.
-    assert [r.message_id for r in owed] == ["boss-2", "peer-2"]
+    assert sorted(r.message_id for r in owed) == ["boss-2", "peer-2"]
     assert all(r.score >= MIN_OWED_SCORE for r in owed)
     assert all("cold open — you have never replied" in r.explanation for r in owed)
 
-    # The older silence is the louder one.
-    assert owed[0].message_id == "boss-2"
+    # The older silence is the louder one — and the silence is dated from the
+    # FIRST unanswered message, not the tail (2026-09-15): the peer thread has
+    # been waiting since the 14th, the boss thread since the 18th.
+    assert owed[0].message_id == "peer-2"
     assert owed[0].score > owed[1].score
+    assert all(r.unanswered_count == 2 for r in owed)
 
     # The earlier messages in each thread are still ranked, as arrivals, and
     # never as a second copy of the same debt.
@@ -1232,11 +1235,189 @@ def test_unanswered_cold_opens_from_known_contacts_accrue_debt(db_session):
     # the two earlier messages score below the threshold as stale arrivals, so
     # the operator is told about one debt and one alternative, not a backlog.
     result = ranker.crown(now=NOW)
-    assert result.item.message_id == "boss-2"
-    assert "You owe Former Boss a reply" in result.reason
+    assert result.item.message_id == "peer-2"
+    assert "You owe Old Colleague a reply" in result.reason
     assert result.displaced.count == 1
-    assert result.displaced.runner_up.message_id == "peer-2"
+    assert result.displaced.runner_up.message_id == "boss-2"
     assert [r.message_id for r in ranker.surface(now=NOW, surfaced_only=True)] == [
-        "boss-2",
         "peer-2",
+        "boss-2",
     ]
+
+
+# --------------------------------------------------------------------------
+# the thread is with a known contact, whoever typed last (2026-09-15)
+# --------------------------------------------------------------------------
+
+
+def test_a_colleague_replying_in_a_known_contacts_thread_keeps_it_owed():
+    """2026-09-14: Mark Batten (not in contacts) replied in Michelle Foster Earle's
+    (in contacts) thread, cc'ing her. The sender-only test demoted the thread from
+    an owed reply (72) to a stranger's arrival (12) and the existing task went
+    stale. Whose court the ball is in does not change with who typed last: the
+    thread is with a known contact if a known contact is on the tail message
+    (to/cc, minus the operator) or sent an earlier message in the thread.
+    """
+    michelle = _contact(contact_id="c-michelle", name="Michelle Foster Earle",
+                        email="michelle@omnisure.com")
+    corpus = InMemoryMailCorpus(messages=[
+        _message(message_id="m-michelle", thread_id="t-omnisure", ts=NOW - timedelta(days=5),
+                 from_addr="michelle@omnisure.com", from_name="Michelle Earle",
+                 to_addrs=("mark@omnisure.com",), cc_addrs=(OWNER,), subject="FW: Consulting"),
+        _message(message_id="m-mark", thread_id="t-omnisure", ts=NOW - timedelta(days=4),
+                 from_addr="mark@omnisure.com", from_name="Mark Batten",
+                 to_addrs=(OWNER,), cc_addrs=("michelle@omnisure.com",), subject="Re: Consulting"),
+    ])
+    ranker = StupidRanker(corpus=corpus, contacts=InMemoryContactDirectory(contacts=[michelle]),
+                          config=_config())
+
+    tail = next(r for r in ranker.surface(now=NOW) if r.message_id == "m-mark")
+
+    assert tail.mode == MODE_OWED_REPLY
+    assert tail.surfaced
+    assert tail.contact_id == "c-michelle"
+    assert tail.contact_name == "Michelle Foster Earle"
+    assert "mark@omnisure.com" in tail.explanation and "is not in contacts" in tail.explanation
+    assert "michelle@omnisure.com" in tail.explanation and "cc" in tail.explanation
+    assert "Michelle Foster Earle" in tail.explanation
+
+
+def test_a_known_contact_earlier_in_the_thread_counts_even_without_a_cc():
+    michelle = _contact(contact_id="c-michelle", name="Michelle Foster Earle",
+                        email="michelle@omnisure.com")
+    corpus = InMemoryMailCorpus(messages=[
+        _message(message_id="m-michelle", thread_id="t", ts=NOW - timedelta(days=6),
+                 from_addr="michelle@omnisure.com", to_addrs=(OWNER,)),
+        _message(message_id="m-mark", thread_id="t", ts=NOW - timedelta(days=4),
+                 from_addr="mark@omnisure.com", to_addrs=(OWNER,), cc_addrs=()),
+    ])
+    ranker = StupidRanker(corpus=corpus, contacts=InMemoryContactDirectory(contacts=[michelle]),
+                          config=_config())
+    tail = next(r for r in ranker.surface(now=NOW) if r.message_id == "m-mark")
+    assert tail.mode == MODE_OWED_REPLY
+    assert tail.contact_id == "c-michelle"
+    assert "earlier in thread t" in tail.explanation
+
+
+def test_a_stranger_cc_ing_the_operator_alone_is_still_a_stranger():
+    """The widening is bounded: participants are checked against contacts, never
+    the operator's own address, and a thread of strangers stays arrival mode."""
+    corpus = InMemoryMailCorpus(messages=[
+        _message(message_id="m-a", thread_id="t", ts=NOW - timedelta(days=6),
+                 from_addr="a@startup.example", to_addrs=(OWNER,)),
+        _message(message_id="m-b", thread_id="t", ts=NOW - timedelta(days=4),
+                 from_addr="b@startup.example", to_addrs=(OWNER,), cc_addrs=("a@startup.example", OWNER)),
+    ])
+    ranker = StupidRanker(corpus=corpus, contacts=InMemoryContactDirectory(contacts=[]), config=_config())
+    tail = next(r for r in ranker.surface(now=NOW) if r.message_id == "m-b")
+    assert tail.mode == MODE_ARRIVAL
+    assert tail.contact_id is None
+
+
+# --------------------------------------------------------------------------
+# relays — a platform notification that carries a person's direct message
+# --------------------------------------------------------------------------
+
+
+def test_a_substack_direct_message_notification_is_an_owed_reply_from_the_person():
+    """Substack DMs reach the mailbox only as `no-reply@substack.com` notifications
+    ("💬 New message from Paul Gibbons"). The sender is unrepliable and the
+    counterparty is not in contacts, so the strict rule gated them forever —
+    and a "very, very important" one sat unread (Nate, 2026-09-15). A direct
+    message is a person addressing him by construction, not a blast, so the
+    relay is unwrapped: the counterparty is the contact, the reply happens on
+    the platform, and the explanation says so.
+    """
+    corpus = InMemoryMailCorpus(messages=[
+        _message(message_id="m-dm", thread_id="t-dm", ts=NOW - timedelta(days=4),
+                 from_addr="no-reply@substack.com", from_name="Substack", to_addrs=(OWNER,),
+                 subject="💬 New message from Paul Gibbons",
+                 snippet="💬 Lets figure something out shall we ͏ ͏ ͏"),
+        _message(message_id="m-follow", thread_id="t-follow", ts=NOW - timedelta(days=4),
+                 from_addr="no-reply@substack.com", from_name="Substack", to_addrs=(OWNER,),
+                 subject="New free subscriber to Field Notes!", snippet="New free subscriber"),
+    ])
+    ranker = StupidRanker(corpus=corpus, contacts=InMemoryContactDirectory(contacts=[]), config=_config())
+    results = {r.message_id: r for r in ranker.surface(now=NOW)}
+
+    dm = results["m-dm"]
+    assert dm.mode == MODE_OWED_REPLY
+    assert dm.surfaced
+    assert dm.contact_name == "Paul Gibbons"
+    assert dm.relay == "substack"
+    assert "direct message" in dm.explanation and "Paul Gibbons" in dm.explanation
+    assert "reply happens on substack" in dm.explanation.lower()
+
+    follow = results["m-follow"]
+    assert follow.mode == MODE_ARRIVAL and not follow.surfaced
+
+
+# --------------------------------------------------------------------------
+# a nudge does not reset the clock (2026-09-15)
+# --------------------------------------------------------------------------
+
+
+def test_a_follow_up_in_an_unanswered_thread_makes_the_debt_older_not_younger():
+    """Michelle wrote on day -5 (cc the operator), Mark followed up on day -1
+    asking about a call tomorrow. Measured from the tail, the thread is 1 day
+    old — inside grace — and would surface only after the call. The silence
+    began with the first unanswered inbound message; a follow-up is one more
+    person waiting, so the debt is dated from there and the count says how many.
+    """
+    michelle = _contact(contact_id="c-michelle", name="Michelle Foster Earle",
+                        email="michelle@omnisure.com")
+    corpus = InMemoryMailCorpus(messages=[
+        _message(message_id="m-michelle", thread_id="t", ts=NOW - timedelta(days=5),
+                 from_addr="michelle@omnisure.com", to_addrs=("mark@omnisure.com",), cc_addrs=(OWNER,)),
+        _message(message_id="m-mark", thread_id="t", ts=NOW - timedelta(days=1),
+                 from_addr="mark@omnisure.com", to_addrs=(OWNER,), cc_addrs=("michelle@omnisure.com",)),
+    ])
+    ranker = StupidRanker(corpus=corpus, contacts=InMemoryContactDirectory(contacts=[michelle]),
+                          config=_config())
+    tail = next(r for r in ranker.surface(now=NOW) if r.message_id == "m-mark")
+    assert tail.mode == MODE_OWED_REPLY
+    assert tail.surfaced
+    assert 4.9 < tail.age_days < 5.1
+    assert tail.unanswered_count == 2
+    assert tail.debt_since == NOW - timedelta(days=5)
+    assert "2 unanswered" in tail.explanation and "michelle@omnisure.com" in tail.explanation
+
+
+def test_the_operators_own_message_ends_the_unanswered_run():
+    """Only the run of inbound messages AFTER the operator's last word counts."""
+    contact = _contact()
+    corpus = InMemoryMailCorpus(messages=[
+        _message(message_id="m-1", thread_id="t", ts=NOW - timedelta(days=20), from_addr="someone@example.com"),
+        _message(message_id="m-own", thread_id="t", ts=NOW - timedelta(days=10), from_addr=OWNER),
+        _message(message_id="m-2", thread_id="t", ts=NOW - timedelta(days=4), from_addr="someone@example.com"),
+    ])
+    ranker = StupidRanker(corpus=corpus, contacts=InMemoryContactDirectory(contacts=[contact]), config=_config())
+    tail = next(r for r in ranker.surface(now=NOW, window_days=30) if r.message_id == "m-2")
+    assert tail.mode == MODE_OWED_REPLY
+    assert 3.9 < tail.age_days < 4.1
+    assert tail.unanswered_count == 1
+
+
+def test_the_debt_and_the_threads_contact_survive_the_arrival_window_being_short():
+    """1,500 messages a fortnight and a 500-row cap meant the arrival sweep only
+    reached back four days, so an owed thread's earlier messages were never
+    seen: no display name to match the cc, no date for the debt. The ranker
+    now reads each inbound tail's own thread history, independent of the
+    window and the cap.
+    """
+    michelle = _contact(contact_id="c-michelle", name="Michelle Foster Earle",
+                        email="michelle@omnisure.com")
+    corpus = InMemoryMailCorpus(messages=[
+        _message(message_id="m-michelle", thread_id="t", ts=NOW - timedelta(days=5),
+                 from_addr="michelle@omnisure.com", to_addrs=(OWNER,)),
+        _message(message_id="m-mark", thread_id="t", ts=NOW - timedelta(days=1),
+                 from_addr="mark@omnisure.com", to_addrs=(OWNER,), cc_addrs=()),
+    ])
+    ranker = StupidRanker(corpus=corpus, contacts=InMemoryContactDirectory(contacts=[michelle]),
+                          config=_config())
+    # A two-day window: Michelle's message is outside it. Only the tail is in view.
+    tail = next(r for r in ranker.surface(now=NOW, window_days=2) if r.message_id == "m-mark")
+    assert tail.mode == MODE_OWED_REPLY
+    assert tail.contact_id == "c-michelle"
+    assert tail.unanswered_count == 2
+    assert 4.9 < tail.age_days < 5.1

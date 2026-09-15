@@ -89,7 +89,16 @@ def load_contacts(client: httpx.Client, *, base_url: str, token: str) -> list[Co
     return _contact_rows(response.json())
 
 
-def existing_hub_tasks(client: httpx.Client, *, base_url: str, headers: dict) -> set[str]:
+def _hub_error(body: dict) -> str:
+    """The hub's error code, clamped: one line, ASCII-ish, short. Never echo a server
+    field verbatim into the terminal."""
+    raw = body.get("error", "") if isinstance(body, dict) else ""
+    text = "".join(ch if ch.isprintable() else " " for ch in str(raw))
+    return " ".join(text.split())[:120]
+
+
+def existing_hub_tasks(client: httpx.Client, *, base_url: str, headers: dict) -> dict[str, str]:
+    """Hub task id -> status for every task this producer has posted."""
     response = client.get(
         base_url.rstrip("/") + "/api/tasks",
         params={"source": TASK_SOURCE, "limit": 1000},
@@ -100,7 +109,7 @@ def existing_hub_tasks(client: httpx.Client, *, base_url: str, headers: dict) ->
         print(f"refused: hub tasks read -> HTTP {response.status_code}", file=sys.stderr)
         sys.exit(3)
     return {
-        str(item.get("action_id") or item.get("id"))
+        str(item.get("action_id") or item.get("id")): str(item.get("status") or "")
         for item in response.json().get("items", [])
         if str(item.get("action_id") or item.get("id")).startswith(TASK_ID_PREFIX)
     }
@@ -112,7 +121,8 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
     parser.add_argument("--dry-run", action="store_true", help="print the plan; post nothing")
     parser.add_argument("--include-arrivals", action="store_true", help="also post surfaced arrivals, not only owed replies")
     parser.add_argument("--window-days", type=int, default=14)
-    parser.add_argument("--limit", type=int, default=500)
+    parser.add_argument("--limit", type=int, default=5000,
+                        help="row cap per corpus read; a hit cap truncates the window and is reported")
     parser.add_argument("--json", action="store_true", help="machine-readable summary on stdout")
     args = parser.parse_args(argv)
 
@@ -139,6 +149,10 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         ranker = StupidRanker(corpus=corpus, contacts=directory, config=config)
         try:
             results = ranker.surface(now=now, window_days=args.window_days, limit=args.limit)
+            if ranker.last_read_truncated:
+                print(f"warning: corpus reads hit the row cap ({args.limit}) for: "
+                      f"{', '.join(ranker.last_read_truncated)} — the window is truncated; raise --limit",
+                      file=sys.stderr)
         except DomainRefusal as exc:
             print(f"refused: {exc}", file=sys.stderr)
             return 2
@@ -150,6 +164,7 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         plan = plan_sync(results, directory=directory, existing_task_ids=existing, include_arrivals=args.include_arrivals)
 
         posted: list[str] = []
+        updated: list[str] = []
         failed: list[str] = []
         if not args.dry_run:
             for payload in plan.create:
@@ -158,7 +173,16 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
                 if response.status_code == 200 and body.get("ok"):
                     posted.append(payload["id"])
                 else:
-                    failed.append(f"{payload['id']}: HTTP {response.status_code} {body.get('error', '')}".strip())
+                    failed.append(f"{payload['id']}: HTTP {response.status_code} {_hub_error(body)}".strip())
+            for patch in plan.update:
+                body_out = {"title": patch["title"], "description": patch["description"]}
+                response = http.patch(hub_url.rstrip("/") + "/api/tasks/" + patch["id"], json=body_out,
+                                      headers=hub_headers, timeout=20.0)
+                body = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+                if response.status_code == 200 and body.get("ok"):
+                    updated.append(patch["id"])
+                else:
+                    failed.append(f"{patch['id']} (update): HTTP {response.status_code} {_hub_error(body)}".strip())
 
     summary = {
         "now": now.isoformat(),
@@ -166,9 +190,11 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         "surfaced": sum(1 for r in results if r.surfaced),
         "owed": sum(1 for r in results if r.is_owed_reply),
         "to_create": [p["title"] for p in plan.create],
+        "to_update": [{"id": u["id"], "title": u["title"]} for u in plan.update],
         "skipped_existing": list(plan.skipped_existing),
         "ignored_arrivals": len(plan.ignored),
         "posted": posted,
+        "updated": updated,
         "failed": failed,
         "dry_run": args.dry_run,
     }
@@ -176,10 +202,13 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         print(json.dumps(summary, indent=2))
     else:
         print(f"ranked={summary['ranked']} surfaced={summary['surfaced']} owed={summary['owed']} "
-              f"create={len(plan.create)} skipped={len(plan.skipped_existing)} posted={len(posted)} failed={len(failed)}"
+              f"create={len(plan.create)} update={len(plan.update)} skipped={len(plan.skipped_existing)} "
+              f"posted={len(posted)} updated={len(updated)} failed={len(failed)}"
               f"{' (dry run)' if args.dry_run else ''}")
         for payload in plan.create:
             print(f"  + {payload['id']}  [{payload['priority']}]  {payload['title']}")
+        for patch in plan.update:
+            print(f"  ~ {patch['id']}  {patch['title']}")
         for line in failed:
             print(f"  ! {line}")
     return 1 if failed else 0

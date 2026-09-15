@@ -83,6 +83,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .jobsearch_executors import DomainRefusal
+from .mail_relays import relay_for
 from .mail_reads import (
     DEFAULT_FETCH_LIMIT,
     MailCorpus,
@@ -217,6 +218,10 @@ class KnownContact:
     email: str
     relationship_tier: str | None = None
     organization_id: str | None = None
+    # How the contact was reached when it is not the sender: "cc 'a@b'" /
+    # "earlier in thread t" / "substack direct message". Recorded so the
+    # explanation and the task can say which rule fired; None = the sender.
+    via: str | None = None
 
 
 class ContactDirectory(Protocol):
@@ -224,6 +229,15 @@ class ContactDirectory(Protocol):
 
     def lookup(self, addresses: Sequence[str]) -> Mapping[str, KnownContact]:
         """Map normalized address -> contact, for the addresses that are known."""
+
+
+@dataclass(frozen=True)
+class Debt:
+    """When a thread's silence began and how many inbound messages it spans."""
+
+    since: datetime
+    count: int
+    started_by: str  # normalized address of the first unanswered sender
 
 
 @dataclass(frozen=True)
@@ -254,6 +268,12 @@ class MailRankResult:
     risk_flags: tuple[str, ...] = ()
     contact_id: str | None = None
     contact_name: str | None = None
+    relay: str | None = None  # "substack" when the mail carried a platform DM
+    # Owed mode: when the silence began (the first unanswered inbound message
+    # in the thread) and how many inbound messages have gone unanswered since.
+    # `age_days` is measured from `debt_since`, so a follow-up never resets it.
+    debt_since: datetime | None = None
+    unanswered_count: int = 1
 
     @property
     def is_owed_reply(self) -> bool:
@@ -287,17 +307,26 @@ def _staleness_factor(
     age_days: float,
     thread_id: str,
     config: RankerConfig,
+    *,
+    unanswered_count: int = 1,
+    debt_started_by: str = "",
 ) -> RankFactor:
     """Rises with age, plateaus at saturation. The inverse of `_recency_factor`."""
     span = config.owed_saturation_days - config.owed_grace_days
     value = min(1.0, max(0.0, (age_days - config.owed_grace_days) / span))
-    return RankFactor(
-        "owed_reply",
-        value,
-        f"last message in thread {thread_id} is inbound and unanswered for "
-        f"{age_days:.1f} days (grace {config.owed_grace_days:g}d, "
-        f"saturates at {config.owed_saturation_days:g}d)",
-    )
+    if unanswered_count > 1:
+        detail = (
+            f"thread {thread_id} has {unanswered_count} unanswered inbound messages; "
+            f"the silence began {age_days:.1f} days ago with '{debt_started_by}' "
+            f"(grace {config.owed_grace_days:g}d, saturates at {config.owed_saturation_days:g}d)"
+        )
+    else:
+        detail = (
+            f"last message in thread {thread_id} is inbound and unanswered for "
+            f"{age_days:.1f} days (grace {config.owed_grace_days:g}d, "
+            f"saturates at {config.owed_saturation_days:g}d)"
+        )
+    return RankFactor("owed_reply", value, detail)
 
 
 def _contact_factor(
@@ -315,7 +344,23 @@ def _contact_factor(
     return RankFactor(
         "known_contact",
         1.0,
-        f"sender '{sender}' is contact '{contact.name}'{tier}",
+        _contact_detail(contact, sender) + tier,
+    )
+
+
+def _contact_detail(contact: KnownContact, sender: str) -> str:
+    """Who the contact is and how it was reached — the sender, or via whom."""
+    if contact.via is None:
+        return f"sender '{sender}' is contact '{contact.name}'"
+    if contact.via.endswith("direct message"):
+        return (
+            f"'{sender}' relays a {contact.via} from '{contact.name}' — a person "
+            f"addressing you by construction, not a blast; reply happens on "
+            f"{contact.via.split()[0].capitalize()}, not in mail"
+        )
+    return (
+        f"sender '{sender}' is not in contacts; thread is with contact "
+        f"'{contact.name}' ({contact.via})"
     )
 
 
@@ -379,7 +424,7 @@ def owes_a_reply(
         is_thread_tail
         and is_inbound
         and contact is not None
-        and not is_unrepliable_address(contact.email, config)
+        and not (contact.email and is_unrepliable_address(contact.email, config))
         and config.owed_grace_days < age_days <= config.owed_horizon_days
     )
 
@@ -409,14 +454,21 @@ def score_message(
     replied_to_thread: bool,
     is_thread_tail: bool,
     config: RankerConfig,
+    debt: "Debt | None" = None,
 ) -> MailRankResult:
     """The rule. Pure — no I/O, operates on already-loaded rows.
 
     Same shape as `core/jobsearch_scoring.py::compute_score`: hard gates first,
     then components, then one explanation naming each component.
+
+    `debt` dates the silence for owed mode: the first unanswered inbound
+    message in the thread, not this one. A follow-up from the other side is one
+    more person waiting, so it makes the debt older, never younger.
     """
     sender = normalize_address(message.from_addr)
     age_days = _age_days(message.ts, now)
+    debt_age_days = _age_days(debt.since, now) if debt is not None else age_days
+    debt_age_days = max(debt_age_days, age_days)
 
     if sender and sender in config.owner_addresses:
         return _gate(
@@ -442,7 +494,7 @@ def score_message(
     # and `StupidRanker.surface` calls it directly on thread tails that have
     # not been through the gate, where the direction test is doing real work.
     owed = owes_a_reply(
-        age_days=age_days,
+        age_days=debt_age_days,
         contact=contact,
         is_thread_tail=is_thread_tail,
         is_inbound=True,
@@ -450,7 +502,11 @@ def score_message(
     )
 
     if owed:
-        staleness = _staleness_factor(age_days, message.thread_id, config)
+        staleness = _staleness_factor(
+            debt_age_days, message.thread_id, config,
+            unanswered_count=debt.count if debt else 1,
+            debt_started_by=debt.started_by if debt else "",
+        )
         # `known_contact` is the precondition that carries the whole weight of
         # owed mode, so it stays in `factors` and says so. `thread_history` is
         # context rather than a multiplier — since the 2026-08-25 ruling a cold
@@ -462,7 +518,7 @@ def score_message(
             RankFactor(
                 "known_contact",
                 1.0,
-                f"sender '{sender}' is contact '{contact.name}'"  # type: ignore[union-attr]
+                _contact_detail(contact, sender)  # type: ignore[arg-type]
                 + (
                     f", tier={contact.relationship_tier}"  # type: ignore[union-attr]
                     if contact.relationship_tier  # type: ignore[union-attr]
@@ -474,7 +530,11 @@ def score_message(
                 "thread_history",
                 1.0,
                 (
-                    f"you have sent a message in thread {message.thread_id} before"
+                    "the mailbox cannot see a reply sent on the platform — "
+                    "triage closes this once you have answered there"
+                    if contact is not None and contact.via is not None  # type: ignore[union-attr]
+                    and contact.via.endswith("direct message")
+                    else f"you have sent a message in thread {message.thread_id} before"
                     if replied_to_thread
                     else f"cold open — you have never replied in thread "
                     f"{message.thread_id}"
@@ -521,11 +581,15 @@ def score_message(
         surfaced=score >= config.surface_threshold,
         explanation=explanation,
         mode=MODE_OWED_REPLY if owed else MODE_ARRIVAL,
-        age_days=age_days,
+        age_days=debt_age_days if owed else age_days,
         factors=factors,
         risk_flags=risk_flags,
+        debt_since=(debt.since if debt else message.ts) if owed else None,
+        unanswered_count=(debt.count if debt else 1) if owed else 1,
         contact_id=contact.contact_id if contact else None,
         contact_name=contact.name if contact else None,
+        relay=(contact.via.split()[0] if contact and contact.via
+               and contact.via.endswith("direct message") else None),
     )
 
 
@@ -547,13 +611,24 @@ def rank_messages(
     replied_thread_ids: AbstractSet[str],
     thread_tail_message_ids: AbstractSet[str],
     config: RankerConfig,
+    contacts_by_message: Mapping[str, KnownContact] | None = None,
+    debts_by_message: Mapping[str, "Debt"] | None = None,
 ) -> list[MailRankResult]:
-    """Score every message and sort. Pure — the join results are handed in."""
+    """Score every message and sort. Pure — the join results are handed in.
+
+    `contacts_by_message` (message_id -> contact) wins over the sender lookup:
+    it is how a thread's known contact, or a relay's counterparty, reaches a
+    message whose own sender is unknown.
+    """
+    by_message = contacts_by_message or {}
+    debts = debts_by_message or {}
     results = [
         score_message(
             message,
             now=now,
-            contact=contacts_by_address.get(normalize_address(message.from_addr)),
+            contact=by_message.get(message.message_id)
+            or contacts_by_address.get(normalize_address(message.from_addr)),
+            debt=debts.get(message.message_id),
             replied_to_thread=message.thread_id in replied_thread_ids,
             is_thread_tail=message.message_id in thread_tail_message_ids,
             config=config,
@@ -752,6 +827,9 @@ class StupidRanker:
         self._corpus = corpus
         self._contacts = contacts
         self._config = config
+        # Which reads came back exactly `limit` rows on the last `surface()`:
+        # the window was cut by volume, not by time, and the caller should say so.
+        self.last_read_truncated: tuple[str, ...] = ()
 
     def surface(
         self,
@@ -790,6 +868,10 @@ class StupidRanker:
             )
         )
         tail_message_ids = frozenset(message.message_id for message in tails)
+        self.last_read_truncated = tuple(
+            name for name, rows in (("arrivals", arrivals), ("thread_tails", tails))
+            if len(rows) >= limit
+        )
 
         thread_ids = sorted(
             {m.thread_id for m in arrivals if m.thread_id}
@@ -799,9 +881,28 @@ class StupidRanker:
             thread_ids,
             sorted(self._config.owner_addresses),
         )
+        # Each inbound tail's own thread, whole: the arrival window (and its
+        # row cap) is a view of what ARRIVED, and an owed thread's earlier
+        # messages are exactly what a newest-first cap drops. Without them the
+        # debt cannot be dated and a cc'd contact's name is never seen.
+        inbound_threads = sorted({
+            t.thread_id for t in tails
+            if t.thread_id and normalize_address(t.from_addr) not in self._config.owner_addresses
+        })
+        history = list(self._corpus.thread_messages(inbound_threads)) if inbound_threads else []
+        seen_ids: set[str] = set()
+        everything: list[MailMessage] = []
+        for m in arrivals + tails + history:
+            if m.message_id not in seen_ids:
+                seen_ids.add(m.message_id)
+                everything.append(m)
         contacts_by_address = self._contacts.lookup(
-            [m.from_addr for m in arrivals] + [m.from_addr for m in tails]
+            sorted({addr for m in everything
+                    for addr in (m.from_addr, *m.to_addrs, *m.cc_addrs)}
+                   - {""})
         )
+        contacts_by_message = self._resolve_thread_contacts(everything, contacts_by_address)
+        debts_by_message = self._resolve_debts(everything, tail_message_ids)
 
         seen = {message.message_id for message in arrivals}
         candidates = list(arrivals)
@@ -813,9 +914,12 @@ class StupidRanker:
             # the operator's own is not a debt, whatever its age. The ball is
             # in their court and waiting is not a failure of his.
             is_inbound = sender not in self._config.owner_addresses
+            debt = debts_by_message.get(tail.message_id)
             if not owes_a_reply(
-                age_days=_age_days(tail.ts, now),
-                contact=contacts_by_address.get(sender),
+                age_days=max(_age_days(tail.ts, now),
+                             _age_days(debt.since, now) if debt else 0.0),
+                contact=contacts_by_message.get(tail.message_id)
+                or contacts_by_address.get(sender),
                 is_thread_tail=True,
                 is_inbound=is_inbound,
                 config=self._config,
@@ -831,10 +935,107 @@ class StupidRanker:
             replied_thread_ids=replied,
             thread_tail_message_ids=tail_message_ids,
             config=self._config,
+            contacts_by_message=contacts_by_message,
+            debts_by_message=debts_by_message,
         )
         if surfaced_only:
             return [result for result in results if result.surfaced]
         return results
+
+    def _resolve_debts(
+        self,
+        messages: Sequence[MailMessage],
+        tail_message_ids: AbstractSet[str],
+    ) -> dict[str, Debt]:
+        """tail message_id -> when its thread's silence began.
+
+        Walk back from the tail over the contiguous run of inbound messages;
+        the run ends at the operator's last word. Bounded by what was fetched,
+        so the debt is never dated earlier than the corpus can prove.
+        """
+        owners = self._config.owner_addresses
+        by_thread: dict[str, list[MailMessage]] = {}
+        for m in messages:
+            by_thread.setdefault(m.thread_id, []).append(m)
+        debts: dict[str, Debt] = {}
+        for thread in by_thread.values():
+            thread.sort(key=lambda m: (m.ts, m.message_id))
+            tail = thread[-1]
+            if tail.message_id not in tail_message_ids:
+                continue
+            run: list[MailMessage] = []
+            for m in reversed(thread):
+                if normalize_address(m.from_addr) in owners:
+                    break
+                run.append(m)
+            if run:
+                first = run[-1]
+                debts[tail.message_id] = Debt(
+                    since=first.ts, count=len(run),
+                    started_by=normalize_address(first.from_addr),
+                )
+        return debts
+
+    def _resolve_thread_contacts(
+        self,
+        messages: Sequence[MailMessage],
+        contacts_by_address: Mapping[str, KnownContact],
+    ) -> dict[str, KnownContact]:
+        """message_id -> the contact the THREAD is with, when the sender is not one.
+
+        The thread is with a known contact if, on the message itself, a known
+        contact is in to/cc (the operator's own addresses excluded), or a known
+        contact sent an earlier message in the same thread. Whose court the
+        ball is in does not change with who typed last (2026-09-14: a colleague
+        replying in a contact's thread demoted it from owed to stranger).
+
+        A relay (`core.mail_relays`) resolves the same way: the counterparty is
+        the contact, via the platform's direct message.
+        """
+        owners = self._config.owner_addresses
+        by_thread: dict[str, list[MailMessage]] = {}
+        for m in messages:
+            by_thread.setdefault(m.thread_id, []).append(m)
+        for thread in by_thread.values():
+            thread.sort(key=lambda m: (m.ts, m.message_id))
+
+        resolved: dict[str, KnownContact] = {}
+        for m in messages:
+            sender = normalize_address(m.from_addr)
+            if sender in owners or sender in contacts_by_address:
+                continue
+            relay = relay_for(m)
+            if relay is not None:
+                resolved[m.message_id] = KnownContact(
+                    contact_id=f"relay:{relay.channel}",
+                    name=relay.counterparty,
+                    email="",
+                    via=f"{relay.channel} direct message",
+                )
+                continue
+            found = None
+            for role, addrs in (("cc", m.cc_addrs), ("to", m.to_addrs)):
+                for raw in addrs:
+                    addr = normalize_address(raw)
+                    if addr in owners:
+                        continue
+                    contact = contacts_by_address.get(addr)
+                    if contact is not None:
+                        found = replace(contact, via=f"{role} '{addr}'")
+                        break
+                if found:
+                    break
+            if found is None:
+                for earlier in by_thread.get(m.thread_id, ()):
+                    if (earlier.ts, earlier.message_id) >= (m.ts, m.message_id):
+                        break
+                    contact = contacts_by_address.get(normalize_address(earlier.from_addr))
+                    if contact is not None:
+                        found = replace(contact, via=f"earlier in thread {m.thread_id}")
+                        break
+            if found is not None:
+                resolved[m.message_id] = found
+        return resolved
 
     def crown(
         self,

@@ -18,6 +18,13 @@ Two things live here that the ranker deliberately does not do:
    so re-runs are idempotent, with the ranker's own explanation carried as the
    context snippet. The hub's `INSERT OR REPLACE` would reset a completed task
    to pending, so the sync plan skips ids the hub already holds.
+
+3. **The task follows the thread's tail.** When someone else writes into a
+   thread that already has an open task (2026-09-14: Mark replied in
+   Michelle's thread), the plan *updates* that task's title and description
+   rather than raising a second one — and only raises a fresh task once the
+   old one is closed. A closed task means the operator ruled; a new inbound
+   message reopens the question, not the ruling.
 """
 
 from __future__ import annotations
@@ -29,6 +36,9 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .mail_ranking import KnownContact, MailRankResult, MODE_OWED_REPLY
 from .mail_reads import MailMessage, normalize_address
+
+CLOSED_STATUSES = frozenset({"completed", "rejected", "withdrawn", "unresolved", "done", "cancelled"})
+RELAY_REPLY_URLS = {"substack": "https://substack.com/inbox"}
 
 TASK_SOURCE = "ccc_email"
 TASK_ID_PREFIX = "ccc-email-"
@@ -210,6 +220,11 @@ class ObservingCorpus:
         self._directory.observe(rows)
         return rows
 
+    def thread_messages(self, thread_ids):
+        rows = list(self._corpus.thread_messages(thread_ids))
+        self._directory.observe(rows)
+        return rows
+
     def threads_with_message_from(self, thread_ids, addresses):
         return self._corpus.threads_with_message_from(thread_ids, addresses)
 
@@ -241,6 +256,13 @@ class UnionCorpus:
     def latest_messages_per_thread(self, **kwargs):
         return self._merged("latest_messages_per_thread", **kwargs)
 
+    def thread_messages(self, thread_ids):
+        rows = []
+        for corpus in self._corpora:
+            rows.extend(corpus.thread_messages(thread_ids))
+        rows.sort(key=lambda m: (m.ts, m.message_id))
+        return rows
+
     def threads_with_message_from(self, thread_ids, addresses):
         found: set[str] = set()
         for corpus in self._corpora:
@@ -268,16 +290,63 @@ def task_payload(
     matched_by: str | None,
     display_name: str | None,
 ) -> dict[str, Any]:
-    """The `/api/tasks` body for one owed reply. Stable for a given message."""
-    who = (contact.name if contact else None) or display_name or result.from_addr
+    """The `/api/tasks` body for one owed reply. Stable for a given message.
+
+    The title names the person who wrote (the sender's display name); the
+    contact fields name the relationship the thread is with. Usually the same
+    person; when a colleague writes into a contact's thread they differ, and
+    `contact_matched_by = "thread"` says so. A relayed direct message names the
+    counterparty and says where the reply happens.
+    """
     subject = result.subject.strip() or "(no subject)"
     age = int(round(result.age_days))
+    if result.relay:
+        who = result.contact_name or display_name or result.from_addr
+        channel = result.relay.capitalize()
+        subject = subject.replace("💬", "").strip() or "(no subject)"
+        url = RELAY_REPLY_URLS.get(result.relay, "")
+        return {
+            "id": task_id_for(result.message_id),
+            "title": f"Reply on {channel} to {who}: {subject}",
+            "description": (
+                f"{who} sent you a direct message on {channel} {age} day{'s' if age != 1 else ''} ago "
+                f"and the mailbox cannot see whether you answered. Reply there: {url}\n"
+                f"Ranker: {result.explanation}"
+            ),
+            "assignee": "Nate",
+            "status": "pending",
+            "priority": _priority(result),
+            "source": TASK_SOURCE,
+            "source_ref": result.message_id,
+            "suggested_action": "reply",
+            "confidence": round(min(result.score, 100) / 100, 2),
+            "contact_id": None,
+            "contact_name": who,
+            "organization_name": None,
+            "context_snippet": result.explanation,
+            "raw_metadata": {
+                "thread_id": result.thread_id,
+                "from_addr": result.from_addr,
+                "message_ts": result.ts.isoformat(),
+                "score": result.score,
+                "mode": result.mode,
+                "age_days": round(result.age_days, 1),
+                "contact_matched_by": None,
+                "relay": result.relay,
+                "reply_url": url,
+            },
+        }
+    via_thread = contact is not None and matched_by == "thread"
+    who = (display_name if via_thread else None) or (contact.name if contact else None) \
+        or display_name or result.from_addr
     return {
         "id": task_id_for(result.message_id),
         "title": f"Reply to {who}: {subject}",
         "description": (
             f"{who} has had the last word on this thread for {age} day{'s' if age != 1 else ''}. "
-            f"Ranker: {result.explanation}"
+            + (f"The thread is with {contact.name}"  # type: ignore[union-attr]
+               + (f" ({company})" if company else "") + ". " if via_thread else "")
+            + f"Ranker: {result.explanation}"
         ),
         "assignee": "Nate",
         "status": "pending",
@@ -307,18 +376,55 @@ class SyncPlan:
     create: tuple[dict[str, Any], ...]
     skipped_existing: tuple[str, ...]
     ignored: tuple[str, ...]  # surfaced but not owed
+    # PATCH bodies for tasks whose thread moved on: {"id", "title", "description", "raw_metadata"}
+    update: tuple[dict[str, Any], ...] = ()
+
+
+def _payload_for(result: MailRankResult, directory: CccContactDirectory) -> dict[str, Any]:
+    address = normalize_address(result.from_addr)
+    contact = directory.lookup([address]).get(address)
+    matched_by = directory.matched_by.get(address)
+    if contact is None and result.contact_id and not result.relay:
+        # The ranker reached a contact through the thread (cc, or an earlier
+        # sender), not through this sender. Link that relationship.
+        contact = KnownContact(contact_id=result.contact_id, name=result.contact_name or "",
+                               email="", via="thread")
+        matched_by = "thread"
+    return task_payload(
+        result,
+        contact=contact,
+        company=directory.company_for(contact),
+        matched_by=matched_by,
+        display_name=directory.display_names.get(address),
+    )
 
 
 def plan_sync(
     results: Sequence[MailRankResult],
     *,
     directory: CccContactDirectory,
-    existing_task_ids: Iterable[str],
+    existing_task_ids: Iterable[str] | Mapping[str, str],
     include_arrivals: bool = False,
 ) -> SyncPlan:
-    """Decide what to post. Owed replies only unless `include_arrivals`."""
-    existing = set(existing_task_ids)
+    """Decide what to post. Owed replies only unless `include_arrivals`.
+
+    `existing_task_ids` is either a bare iterable of hub task ids (all treated
+    as open) or a mapping id -> hub status, which lets the plan tell an open
+    task from a closed one when a thread's tail moves.
+    """
+    if isinstance(existing_task_ids, Mapping):
+        existing: dict[str, str] = {k: (v or "") for k, v in existing_task_ids.items()}
+    else:
+        existing = {task_id: "" for task_id in existing_task_ids}
+    # thread -> the open hub task keyed on an OLDER message of that thread
+    open_task_by_thread: dict[str, str] = {}
+    for result in results:
+        task_id = task_id_for(result.message_id)
+        if task_id in existing and existing[task_id].lower() not in CLOSED_STATUSES:
+            open_task_by_thread.setdefault(result.thread_id, task_id)
+
     create: list[dict[str, Any]] = []
+    update: list[dict[str, Any]] = []
     skipped: list[str] = []
     ignored: list[str] = []
     for result in results:
@@ -331,15 +437,16 @@ def plan_sync(
         if task_id in existing:
             skipped.append(task_id)
             continue
-        address = normalize_address(result.from_addr)
-        contact = directory.lookup([address]).get(address)
-        create.append(
-            task_payload(
-                result,
-                contact=contact,
-                company=directory.company_for(contact),
-                matched_by=directory.matched_by.get(address),
-                display_name=directory.display_names.get(address),
-            )
-        )
-    return SyncPlan(create=tuple(create), skipped_existing=tuple(skipped), ignored=tuple(ignored))
+        payload = _payload_for(result, directory)
+        older = open_task_by_thread.get(result.thread_id)
+        if older is not None and older != task_id:
+            update.append({
+                "id": older,
+                "title": payload["title"],
+                "description": payload["description"],
+                "raw_metadata": {**payload["raw_metadata"], "source_ref": result.message_id},
+            })
+            continue
+        create.append(payload)
+    return SyncPlan(create=tuple(create), skipped_existing=tuple(skipped),
+                    ignored=tuple(ignored), update=tuple(update))
