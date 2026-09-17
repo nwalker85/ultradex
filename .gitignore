@@ -79,3 +79,4 @@ dist/
 
 # scheduled owed-replies pass: fcntl lock, lives only while a pass runs
 .owed-replies.lock
+.linkedin-owed-replies.lock
