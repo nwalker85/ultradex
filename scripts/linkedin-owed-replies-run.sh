@@ -13,6 +13,7 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 WT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="${PYTHON:-$WT/.venv311/bin/python}"
+[ -x "$PY" ] || PY="/Users/nate/src/hrafngud.ravenmask.net/nate/ultradex/main-live/.venv311/bin/python"
 CONTACTS="${CCC_CONTACTS_FILE:-$HOME/var/ccc/contacts.json}"
 HUB="${ODINSRUNES_API_URL:-http://100.106.47.41:8765}"
 BRIDGE="${MCP_CHROME_URL:-http://127.0.0.1:12306/mcp}"

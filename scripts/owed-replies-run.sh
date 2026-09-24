@@ -12,7 +12,8 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 WT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PY="$WT/.venv311/bin/python"
+PY="${PYTHON:-$WT/.venv311/bin/python}"
+[ -x "$PY" ] || PY="/Users/nate/src/hrafngud.ravenmask.net/nate/ultradex/main-live/.venv311/bin/python"
 A="${MAIL_CORPUS_ENV_A:-$HOME/tmp/mail-corpus-admin.env.tpl}"            # gmail (nwalker85) + shared endpoints
 B="${MAIL_CORPUS_ENV_B:-$HOME/tmp/mail-corpus-ravenhelm-co.env.tpl}"     # nate@ravenhelm.co
 CONTACTS="${CCC_CONTACTS_FILE:-$HOME/var/ccc/contacts.json}"
@@ -44,22 +45,32 @@ fi
 echo "== $(date -u +%FT%TZ) checkout $WT @ $(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 echo "== ingest gmail"
 MAIL_CORPUS_ENV_TEMPLATE="$A" MAIL_CLICKHOUSE_USER=default PYTHON="$PY" \
-  scripts/mail-corpus-ingest.sh --extra-query "newer_than:30d" --max-messages 3000 2>&1 | tail -2
+  scripts/mail-corpus-ingest.sh --extra-query "newer_than:30d" --max-messages 3000 2>&1 | tail -2 || echo "== WARNING: gmail ingest returned non-zero (check OAuth tokens); continuing"
 echo "== ingest ravenhelm.co"
 MAIL_CORPUS_ENV_TEMPLATE="$B" MAIL_CLICKHOUSE_USER=default PYTHON="$PY" \
-  scripts/mail-corpus-ingest.sh --extra-query "newer_than:30d" --max-messages 3000 2>&1 | tail -2
+  scripts/mail-corpus-ingest.sh --extra-query "newer_than:30d" --max-messages 3000 2>&1 | tail -2 || echo "== WARNING: ravenhelm.co ingest returned non-zero; continuing"
 echo "== contacts from vakr"
 TMP=$(mktemp "$(dirname "$CONTACTS")/contacts.XXXXXX")
-if ssh -o BatchMode=yes -o ConnectTimeout=8 vakr-ts-svc 'T=$(sudo k0s kubectl -n ccc-tmp get secret ultradex -o jsonpath="{.data.ULTRADEX_API_TOKEN}" | base64 -d); curl -fsS -m 30 -H "Authorization: Bearer $T" http://10.10.20.101:30800/api/v1/contacts' 2>/dev/null | grep -v '^#' > "$TMP" && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$TMP"; then
+TIMEOUT_BIN=$(command -v timeout || echo "")
+if [ -n "$TIMEOUT_BIN" ]; then SSH_RUN="$TIMEOUT_BIN 6s ssh"; else SSH_RUN="ssh"; fi
+if $SSH_RUN -o BatchMode=yes -o ConnectTimeout=5 vakr-ts-svc 'T=$(sudo k0s kubectl -n ccc-tmp get secret ultradex -o jsonpath="{.data.ULTRADEX_API_TOKEN}" | base64 -d); curl -fsS -m 30 -H "Authorization: Bearer $T" http://10.10.20.101:30800/api/v1/contacts' 2>/dev/null | grep -v '^#' > "$TMP" && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$TMP"; then
   mv "$TMP" "$CONTACTS"; echo "contacts refreshed: $(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$CONTACTS")"
 else
   rm -f "$TMP"; echo "contacts refresh failed; using cached $CONTACTS"
 fi
-echo "== owed replies"
+echo "== email owed replies"
 ARGS=--dry-run; [ "${1:-}" = "--post" ] && ARGS=
 op run --env-file="$A" -- env CCC_CONTACTS_FILE="$CONTACTS" ODINSRUNES_API_URL="$HUB" "$PY" -m cli.owed_replies $ARGS
+echo "== linkedin owed replies"
+if lsof -nP -iTCP:12306 -sTCP:LISTEN >/dev/null 2>&1; then
+  PYTHON="$PY" scripts/linkedin-owed-replies-run.sh "${1:-}" || echo "== WARNING: linkedin scan failed"
+else
+  echo "== SKIPPED: mcp-chrome bridge not listening on 12306"
+fi
 echo "== hub ccc_email tasks"
 curl -s -m 8 "$HUB/api/tasks?source=ccc_email&limit=50" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("count", d["count"]); [print(" ", i["status"], "|", i["title"][:90]) for i in d["items"]]'
+echo "== hub ccc_linkedin tasks"
+curl -s -m 8 "$HUB/api/tasks?source=ccc_linkedin&limit=50" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("count", d.get("count", len(d.get("items", [])))); [print(" ", i.get("status"), "|", i.get("title","")[:90]) for i in d.get("items",[])]'
 ELAPSED=$(( $(date +%s) - START ))
 NOTE=""; [ "$ELAPSED" -ge $(( PERIOD_SECONDS * 8 / 10 )) ] && NOTE=" WARNING: runtime is ${ELAPSED}s against a ${PERIOD_SECONDS}s period — the next tick will be skipped by the lock"
 echo "DONE $(date -u +%FT%TZ) elapsed=${ELAPSED}s${NOTE}"

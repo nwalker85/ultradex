@@ -293,10 +293,12 @@ class ChromeBridge:
             outer = json.loads(text)
         except json.JSONDecodeError as exc:
             raise BridgeUnavailable("javascript result not JSON") from exc
-        if isinstance(outer, dict) and outer.get("redacted"):
-            raise BridgeUnavailable("javascript result redacted by the bridge")
         inner = outer.get("result") if isinstance(outer, dict) else outer
+        if inner is None and isinstance(outer, dict) and outer.get("redacted"):
+            raise BridgeUnavailable("javascript result redacted by the bridge")
         if isinstance(inner, str):
+            if inner.startswith("[BLOCKED"):
+                raise BridgeUnavailable("javascript result was completely blocked by the bridge")
             try:
                 return json.loads(inner)
             except json.JSONDecodeError:
@@ -312,6 +314,19 @@ class LinkedInInbox:
         self._tab_id = tab_id
 
     def _ensure_messaging_tab(self) -> None:
+        if self._tab_id is None:
+            try:
+                tabs_text = self._bridge.call("get_windows_and_tabs", {})
+                tabs_data = json.loads(tabs_text)
+                for win in tabs_data.get("windows", []):
+                    for tab in win.get("tabs", []):
+                        if "linkedin.com" in tab.get("url", ""):
+                            self._tab_id = int(tab["tabId"])
+                            break
+                    if self._tab_id is not None:
+                        break
+            except Exception:
+                pass
         args: dict[str, Any] = {"url": LINKEDIN_MESSAGING_URL, "background": True}
         if self._tab_id is not None:
             args["tabId"] = self._tab_id
