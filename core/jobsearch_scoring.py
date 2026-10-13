@@ -70,13 +70,22 @@ _STOPWORDS = frozenset(
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
 # Known employer name/brand collisions. Resume provenance (Intent seed
-# §1.5/§4): "SoundHound AI / Amelia (formerly IPsoft Amelia)" is one employer
-# under two brand names used across different sourcing passes. Exclusion
-# matching must treat every alias in a group as the same employer even when
-# the Intent record's exclusion list only names one spelling — otherwise a
-# duplicate-listed opportunity under the other name silently evades the gate.
+# §1.5/§4): SoundHound AI acquired Amelia / IPsoft Amelia and LivePerson.
+# Exclusion matching treats every alias in this group as the same employer.
 EMPLOYER_ALIAS_GROUPS: tuple[frozenset[str], ...] = (
-    frozenset({"soundhound ai", "soundhound", "amelia", "ipsoft amelia"}),
+    frozenset(
+        {
+            "soundhound ai",
+            "soundhound",
+            "amelia",
+            "ipsoft amelia",
+            "liveperson",
+            "liveperson inc",
+            "live person",
+        }
+    ),
+    frozenset({"intelepeer", "intelepeer cloud communications"}),
+    frozenset({"quant", "quant.network"}),
 )
 
 

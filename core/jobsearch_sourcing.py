@@ -38,8 +38,8 @@ class JobBoardId(str, Enum):
     OPENAI = "openai"
     PARLOA = "parloa"
     DEEPGRAM = "deepgram"
-    SOUNDHOUND = "soundhound"
-    LIVEPERSON = "liveperson"
+    RETELL_AI = "retell_ai"
+    SIERRA = "sierra"
     SCALE_AI = "scale_ai"
     GOOGLE = "google"
     AWS = "aws"
@@ -205,6 +205,9 @@ EXCLUDED_EMPLOYERS = frozenset(
         "soundhound",
         "amelia",
         "ipsoft amelia",
+        "liveperson",
+        "liveperson inc",
+        "live person",
         "quant",
         "intelepeer",
     }
@@ -709,46 +712,46 @@ class DeepgramJobAdapter(JobBoardAdapter):
         ]
 
 
-class SoundHoundJobAdapter(JobBoardAdapter):
-    board_name = "soundhound"
-    board_id = JobBoardId.SOUNDHOUND
+class RetellAIJobAdapter(JobBoardAdapter):
+    board_name = "retell_ai"
+    board_id = JobBoardId.RETELL_AI
 
     def generate_mock_postings(self) -> list[JobPosting]:
         return [
             JobPosting(
-                id="soundhound-dir-01",
-                employer="SoundHound AI",
-                title="Director of Conversational AI Platforms",
+                id="retell-sa-01",
+                employer="Retell AI",
+                title="Principal Solutions Architect — Real-Time Voice Agents",
                 location="Remote",
-                description="Lead conversational AI platform architecture across voice commerce and dialog management.",
-                required_skills=["Conversational AI", "Voice AI / ASR / TTS", "Python", "FastAPI"],
-                salary_min=190000,
-                salary_max=240000,
-                url="https://jobs.lever.co/soundhound/901",
-                source_board="soundhound",
+                description="Lead enterprise voice agent architecture, ultra-low latency WebRTC pipelines, and LLM-driven voicebots for high-volume customer contact centers.",
+                required_skills=["Voice AI / ASR / TTS", "Conversational AI", "Python", "FastAPI", "WebRTC & Audio Streaming"],
+                salary_min=200000,
+                salary_max=260000,
+                url="https://jobs.ashbyhq.com/retellai/101",
+                source_board="retell_ai",
                 posted_at="2026-08-20T10:00:00Z",
                 remote_type="remote",
             )
         ]
 
 
-class LivePersonJobAdapter(JobBoardAdapter):
-    board_name = "liveperson"
-    board_id = JobBoardId.LIVEPERSON
+class SierraJobAdapter(JobBoardAdapter):
+    board_name = "sierra"
+    board_id = JobBoardId.SIERRA
 
     def generate_mock_postings(self) -> list[JobPosting]:
         return [
             JobPosting(
-                id="liveperson-dir-01",
-                employer="LivePerson",
-                title="Director of Conversational AI & Platform Strategy",
+                id="sierra-fse-01",
+                employer="Sierra",
+                title="Forward Deployed Architect — Enterprise Conversational AI",
                 location="Remote",
-                description="Drive technical vision and enterprise architecture for conversational AI, digital customer engagement, and LLM-powered contact centers.",
-                required_skills=["Conversational AI", "Platform Architecture", "Python", "FastAPI"],
-                salary_min=195000,
-                salary_max=245000,
-                url="https://careers.liveperson.com/771",
-                source_board="liveperson",
+                description="Drive mission-critical conversational AI platform deployments, agentic workflows, and LLM reasoning integrations for Fortune 500 enterprises.",
+                required_skills=["Conversational AI", "Agentic Architecture", "Python", "FastAPI", "Enterprise Integrations"],
+                salary_min=210000,
+                salary_max=275000,
+                url="https://jobs.lever.co/sierra/201",
+                source_board="sierra",
                 posted_at="2026-08-20T10:00:00Z",
                 remote_type="remote",
             )
@@ -831,8 +834,8 @@ BOARD_REGISTRY: dict[str, type[JobBoardAdapter]] = {
     "openai": OpenAIJobAdapter,
     "parloa": ParloaJobAdapter,
     "deepgram": DeepgramJobAdapter,
-    "soundhound": SoundHoundJobAdapter,
-    "liveperson": LivePersonJobAdapter,
+    "retell_ai": RetellAIJobAdapter,
+    "sierra": SierraJobAdapter,
     "scale_ai": ScaleAIJobAdapter,
     "google": GoogleJobAdapter,
     "aws": AWSJobAdapter,
